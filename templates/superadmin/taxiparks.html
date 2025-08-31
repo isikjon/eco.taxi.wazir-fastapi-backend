@@ -1,0 +1,316 @@
+{% extends "base.html" %}
+
+{% block title %}Taxi 2.0 - Таксопарки{% endblock %}
+
+{% block content %}
+<div class="p-8">
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h2 class="text-3xl font-bold text-gray-900">Таксопарки</h2>
+            <p class="text-gray-600">Управление таксопарками системы</p>
+        </div>
+        <button onclick="openCreateTaxiparkModal()" class="btn-primary">
+            <i class="ri-add-line mr-2"></i>
+            Добавить таксопарк
+        </button>
+    </div>
+    
+    <div class="table-container">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Список таксопарков</h3>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="table-header">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Название</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата создания</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Доход (руб)</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Водители</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Диспетчеры</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Комиссия (%)</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="taxiparksTableBody" class="bg-white divide-y divide-gray-200">
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block modals %}
+<!-- Модальное окно создания таксопарка -->
+<div id="createTaxiparkModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Добавить новый таксопарк</h3>
+        
+        <form id="createTaxiparkForm" class="space-y-4">
+            <div>
+                <label for="taxiparkName" class="form-label">Название таксопарка</label>
+                <input type="text" id="taxiparkName" name="name" required class="form-input" placeholder="Введите название">
+            </div>
+            
+            <div>
+                <label for="taxiparkCommission" class="form-label">Процент комиссии (%)</label>
+                <input type="number" id="taxiparkCommission" name="commission_percent" min="0" max="100" step="0.1" value="15.0" required class="form-input">
+            </div>
+            
+            <div class="flex space-x-3 pt-4">
+                <button type="submit" class="flex-1 btn-primary">
+                    Создать
+                </button>
+                <button type="button" onclick="closeCreateTaxiparkModal()" class="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 transition-colors">
+                    Отмена
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Модальное окно изменения комиссии -->
+<div id="editCommissionModal" class="modal-overlay">
+    <div class="modal-content">
+        <h3 class="text-lg font-semibold text-gray-900 mb-4">Изменить процент комиссии</h3>
+        
+        <form id="editCommissionForm" class="space-y-4">
+            <input type="hidden" id="editTaxiparkId" name="taxipark_id">
+            
+            <div>
+                <label for="editCommissionPercent" class="form-label">Процент комиссии (%)</label>
+                <input type="number" id="editCommissionPercent" name="commission_percent" min="0" max="100" step="0.1" required class="form-input">
+            </div>
+            
+            <div class="flex space-x-3 pt-4">
+                <button type="submit" class="flex-1 btn-primary">
+                    Сохранить
+                </button>
+                <button type="button" onclick="closeEditCommissionModal()" class="flex-1 bg-gray-300 text-gray-700 py-2 px-4 rounded-md hover:bg-gray-400 transition-colors">
+                    Отмена
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let taxiparksData = [];
+
+    document.addEventListener('DOMContentLoaded', function() {
+        const token = localStorage.getItem('superadmin_access_token');
+        if (!token) {
+            window.location.href = '/superadmin/login';
+            return;
+        }
+        
+        loadTaxiparks();
+        
+        document.getElementById('createTaxiparkForm').addEventListener('submit', handleCreateTaxipark);
+        document.getElementById('editCommissionForm').addEventListener('submit', handleEditCommission);
+    });
+
+    async function loadTaxiparks() {
+        try {
+            const response = await fetch('/superadmin/api/taxiparks');
+            
+            if (response.ok) {
+                taxiparksData = await response.json();
+                updateTaxiparksTable();
+            } else {
+                console.error('Failed to load taxiparks:', response.status);
+            }
+        } catch (error) {
+            console.error('Error loading taxiparks:', error);
+        }
+    }
+
+    function updateTaxiparksTable() {
+        const tbody = document.getElementById('taxiparksTableBody');
+        tbody.innerHTML = '';
+        
+        taxiparksData.forEach(taxipark => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${taxipark.id}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${taxipark.name}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${taxipark.created_at ? new Date(taxipark.created_at).toLocaleDateString('ru-RU') : '-'}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${taxipark.income.toFixed(2)}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${taxipark.drivers_count}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${taxipark.dispatchers_count}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">${taxipark.commission_percent}%</td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="status-badge ${taxipark.is_active ? 'active' : 'inactive'}">
+                        ${taxipark.is_active ? 'Активен' : 'Заморожен'}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    <div class="flex space-x-2">
+                        <button onclick="openEditCommissionModal(${taxipark.id}, ${taxipark.commission_percent})" class="text-blue-600 hover:text-blue-900">
+                            <i class="ri-edit-line"></i> Изменить
+                        </button>
+                        <button onclick="toggleTaxiparkStatus(${taxipark.id}, ${taxipark.is_active})" class="${taxipark.is_active ? 'text-orange-600 hover:text-orange-900' : 'text-green-600 hover:text-green-900'}">
+                            <i class="ri-${taxipark.is_active ? 'pause' : 'play'}-line"></i> ${taxipark.is_active ? 'Заморозить' : 'Разморозить'}
+                        </button>
+                        <button onclick="deleteTaxipark(${taxipark.id})" class="text-red-600 hover:text-red-900">
+                            <i class="ri-delete-bin-line"></i> Удалить
+                        </button>
+                    </div>
+                </td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    function openCreateTaxiparkModal() {
+        const modal = document.getElementById('createTaxiparkModal');
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function closeCreateTaxiparkModal() {
+        const modal = document.getElementById('createTaxiparkModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        document.getElementById('createTaxiparkForm').reset();
+    }
+
+    function openEditCommissionModal(taxiparkId, currentCommission) {
+        const modal = document.getElementById('editCommissionModal');
+        document.getElementById('editTaxiparkId').value = taxiparkId;
+        document.getElementById('editCommissionPercent').value = currentCommission;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+    }
+
+    function closeEditCommissionModal() {
+        const modal = document.getElementById('editCommissionModal');
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        document.getElementById('editCommissionForm').reset();
+    }
+
+    async function handleCreateTaxipark(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(e.target);
+        const name = formData.get('name');
+        const commission_percent = parseFloat(formData.get('commission_percent'));
+        
+        try {
+            const requestBody = JSON.stringify({ name, commission_percent });
+            
+            const response = await fetch('/superadmin/api/taxiparks', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: requestBody
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                alert('Таксопарк успешно создан!');
+                closeCreateTaxiparkModal();
+                loadTaxiparks();
+            } else {
+                const error = await response.json();
+                alert(`Ошибка: ${error.detail}`);
+            }
+        } catch (error) {
+            console.error('Error creating taxipark:', error);
+            alert('Ошибка при создании таксопарка');
+        }
+    }
+
+    async function handleEditCommission(e) {
+        e.preventDefault();
+        
+        const formData = new FormData(e.target);
+        const taxiparkId = parseInt(formData.get('taxipark_id'));
+        const commission_percent = parseFloat(formData.get('commission_percent'));
+        
+        try {
+            const requestBody = JSON.stringify({ commission_percent });
+            
+            const response = await fetch(`/superadmin/api/taxiparks/${taxiparkId}/commission`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: requestBody
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                alert('Комиссия успешно обновлена!');
+                closeEditCommissionModal();
+                loadTaxiparks();
+            } else {
+                const error = await response.json();
+                alert(`Ошибка: ${error.detail}`);
+            }
+        } catch (error) {
+            console.error('Error updating commission:', error);
+            alert('Ошибка при обновлении комиссии');
+        }
+    }
+
+    async function toggleTaxiparkStatus(taxiparkId, currentStatus) {
+        const action = currentStatus ? 'заморозить' : 'разморозить';
+        if (!confirm(`Вы уверены, что хотите ${action} этот таксопарк?`)) {
+            return;
+        }
+        
+        try {
+            const newStatus = !currentStatus;
+            const requestBody = JSON.stringify({ is_active: newStatus });
+            
+            const response = await fetch(`/superadmin/api/taxiparks/${taxiparkId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: requestBody
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                alert(`Таксопарк успешно ${action}!`);
+                loadTaxiparks();
+            } else {
+                const error = await response.json();
+                alert(`Ошибка: ${error.detail}`);
+            }
+        } catch (error) {
+            console.error('Error toggling taxipark status:', error);
+            alert(`Ошибка при ${action} таксопарка`);
+        }
+    }
+
+    async function deleteTaxipark(taxiparkId) {
+        if (!confirm('Вы уверены, что хотите удалить этот таксопарк?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch(`/superadmin/api/taxiparks/${taxiparkId}`, {
+                method: 'DELETE'
+            });
+            
+            if (response.ok) {
+                alert('Таксопарк успешно удален!');
+                loadTaxiparks();
+            } else {
+                const error = await response.json();
+                alert(`Ошибка: ${error.detail}`);
+            }
+        } catch (error) {
+            console.error('Error deleting taxipark:', error);
+            alert('Ошибка при удалении таксопарка');
+        }
+    }
+</script>
+{% endblock %}

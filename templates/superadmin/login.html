@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Taxi 2.0 - Вход суперадмина</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="/static/css/main.css" rel="stylesheet">
+</head>
+<body class="login-page">
+    <div class="max-w-md w-full bg-white rounded-xl shadow-lg p-8">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl font-bold text-gray-900 mb-2">Taxi 2.0</h1>
+            <p class="text-gray-600">Панель суперадмина</p>
+        </div>
+        
+        <form id="superAdminLoginForm" class="space-y-6">
+            <div>
+                <label for="login" class="form-label">Логин</label>
+                <input 
+                    type="text" 
+                    id="login" 
+                    name="login" 
+                    value="Alexander"
+                    class="form-input"
+                    required
+                >
+            </div>
+            
+            <div>
+                <label for="password" class="form-label">Пароль</label>
+                <input 
+                    type="password" 
+                    id="password" 
+                    name="password" 
+                    value="123"
+                    class="form-input"
+                    required
+                >
+            </div>
+            
+            <button 
+                type="submit" 
+                id="superadminLoginButton"
+                class="w-full btn-primary"
+            >
+                <span id="superadminButtonText">Войти как суперадмин</span>
+                <div id="superadminLoadingSpinner" class="hidden">
+                    <svg class="animate-spin h-5 w-5 mx-auto" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                        <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                </div>
+            </button>
+        </form>
+        
+        <div id="superAdminErrorMessage" class="hidden mt-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p class="text-red-600 text-sm text-center"></p>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const superAdminLoginForm = document.getElementById('superAdminLoginForm');
+            const superAdminLoginButton = document.getElementById('superadminLoginButton');
+            const superAdminButtonText = document.getElementById('superadminButtonText');
+            const superAdminLoadingSpinner = document.getElementById('superadminLoadingSpinner');
+            const superAdminErrorMessage = document.getElementById('superAdminErrorMessage');
+
+            if (!superAdminLoginForm) {
+                console.error('Form not found');
+                return;
+            }
+            if (!superAdminLoginButton) {
+                console.error('Button not found');
+                return;
+            }
+
+            superAdminLoginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+
+                const htmlFormData = new FormData(superAdminLoginForm);
+                const login = htmlFormData.get('login');
+                const password = htmlFormData.get('password');
+
+                console.log('Login attempt:', login);
+                console.log('Sending data:', { login, password });
+
+                superAdminLoginButton.disabled = true;
+                superAdminButtonText.textContent = 'Вход...';
+                superAdminLoadingSpinner.classList.remove('hidden');
+                superAdminErrorMessage.classList.add('hidden');
+
+                const requestBody = JSON.stringify({ login, password });
+                console.log('Request body:', requestBody);
+
+                try {
+                    console.log('🚀 Sending request to /auth/superadmin/login');
+                    console.log('📝 Request method: POST');
+                    console.log('📝 Request headers:', {
+                        'Content-Type': 'application/json'
+                    });
+                    console.log('📝 Request body:', requestBody);
+                    console.log('📝 Full URL:', window.location.origin + '/auth/superadmin/login');
+
+                    const response = await fetch('/auth/superadmin/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: requestBody
+                    });
+
+                    console.log('Response status:', response.status);
+                    console.log('Response headers:', response.headers);
+                    
+                    const responseData = await response.json();
+                    console.log('Response data:', responseData);
+                    console.log('Response detail:', responseData.detail);
+                    console.log('Detail type:', typeof responseData.detail);
+
+                    if (response.ok) {
+                        // Сохраняем токен
+                        if (responseData.access_token) {
+                            localStorage.setItem('superadmin_access_token', responseData.access_token);
+                        }
+                        
+                        // Перенаправляем на дашборд
+                        window.location.href = responseData.redirect_url || '/superadmin/dashboard';
+                    } else {
+                        throw new Error(responseData.detail || 'Ошибка входа');
+                    }
+                } catch (error) {
+                    console.error('Network error:', error);
+                    
+                    let errorMessage = 'Ошибка сети';
+                    if (error.message) {
+                        errorMessage = error.message;
+                    }
+                    
+                    superAdminErrorMessage.querySelector('p').textContent = errorMessage;
+                    superAdminErrorMessage.classList.remove('hidden');
+                } finally {
+                    superAdminLoginButton.disabled = false;
+                    superAdminButtonText.textContent = 'Войти как суперадмин';
+                    superAdminLoadingSpinner.classList.add('hidden');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
