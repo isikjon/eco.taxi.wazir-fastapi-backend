@@ -1,0 +1,67 @@
+{% extends "dispatcher/base.html" %}
+
+{% block title %}Профиль диспетчерской - Taxi 2.0{% endblock %}
+
+{% block content %}
+<div class="main__table">
+    <div class="profile-info-container">
+        <div class="profile-info-item">
+            <div class="profile-info-label">Логин</div>
+            <div class="profile-info-value">{{ dispatcher.login }}</div>
+        </div>
+        
+        <div class="profile-info-item">
+            <div class="profile-info-label">Имя</div>
+            <div class="profile-info-value">{{ dispatcher.first_name }} {{ dispatcher.last_name }}</div>
+        </div>
+        
+        <div class="profile-info-item">
+            <div class="profile-info-label">Таксопарк</div>
+            <div class="profile-info-value">{{ taxipark.name if taxipark else 'Не указано' }}</div>
+        </div>
+        
+        <div class="profile-info-item">
+            <div class="profile-info-label">Дней в системе</div>
+            <div class="profile-info-value">{{ days_working }} дней</div>
+        </div>
+    </div>
+</div>
+
+<style>
+.main__subheader {
+    display: none !important;
+}
+
+.profile-info-container {
+    background: #47484c;
+    border-radius: 5px;
+    padding: 20px;
+}
+
+.profile-info-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 0;
+    border-bottom: 1px solid #5a5b5f;
+}
+
+.profile-info-item:last-child {
+    border-bottom: none;
+}
+
+.profile-info-label {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 500;
+    font-family: 'Montserrat', sans-serif;
+}
+
+.profile-info-value {
+    color: #fff;
+    font-size: 16px;
+    font-weight: 600;
+    font-family: 'Montserrat', sans-serif;
+}
+</style>
+{% endblock %}

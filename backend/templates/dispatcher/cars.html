@@ -1,0 +1,149 @@
+{% extends "dispatcher/base.html" %}
+
+{% block title %}Автомобили - Taxi 2.0{% endblock %}
+
+{% block page_title %}Автомобили{% endblock %}
+
+{% block nav_cars_active %}navbar__links-content-active{% endblock %}
+
+{% block header_search %}
+<!-- <div class="main__header-search-item">
+    <form action="#">
+        <input type="search" placeholder="Поиск">
+        <button><img src="/static/dispatcher/img/ico/search.png" alt="search"></button>
+    </form>
+</div> -->
+{% endblock %}
+
+{% block subheader %}
+<div class="main__subheader main__cars-list">
+    <div class="main__subheader-filing main__subheader-cars-filter">
+        <form action="#">
+            <select name="filing-date">
+                <option value="Статусы" disabled selected>Статусы</option>
+                <option value="Свободен">Свободен</option>
+                <option value="Занят">Занят</option>
+            </select>
+        </form>
+        <form action="#">
+            <select name="filing-date">
+                <option value="Марка" disabled selected>Марка</option>
+                <option value="KIA">KIA</option>
+                <option value="Honda">Honda</option>
+            </select>
+        </form>
+        <form action="#">
+            <select name="filing-date">
+                <option value="Модель" disabled selected>Модель</option>
+                <option value="Модель 1">Модель 1</option>
+                <option value="Модель 2">Модель 2</option>
+            </select>
+        </form>
+        <form action="#">
+            <select name="filing-date">
+                <option value="Цвет" disabled selected>Цвет</option>
+                <option value="Белый">Белый</option>
+                <option value="Черный">Черный</option>
+            </select>
+        </form>
+        <form action="#">
+            <select name="filing-date">
+                <option value="Год выпуска" disabled selected>Год выпуска</option>
+                <option value="2007">2007</option>
+                <option value="2007">2007</option>
+            </select>
+        </form>
+    </div>
+    <div class="main__subheader-balance">
+        <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
+        <p>Баланс: {{ "%.0f"|format(balance) if balance else "0" }}</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="main__table">
+    <table>
+        <thead>
+            <tr>
+                <th>Марка</th>
+                <th>Модель</th>
+                <th>Цвет</th>
+                <th>Год</th>
+                <th>Гос.номер</th>
+                <th>VIN</th>
+                <th>Номер кузова</th>
+                <th>СТС</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if cars %}
+                {% for car in cars %}
+                <tr>
+                    <td>{{ car.car_model.split(' ')[0] if car.car_model else 'Не указано' }}</td>
+                    <td>{{ car.car_model.split(' ')[1] if car.car_model and ' ' in car.car_model else car.car_model if car.car_model else 'Не указано' }}</td>
+                    <td>Не указано</td>
+                    <td>Не указано</td>
+                    <td>{{ car.car_number if car.car_number else 'Не указано' }}</td>
+                    <td>Не указано</td>
+                    <td>Не указано</td>
+                    <td>Не указано</td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="8" style="text-align: center; padding: 20px; color: #888;">
+                        Автомобилей нет
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+    <div class="main__table-footer">
+        <div class="main__table-driver">
+            <button>Автомобили: {{ total_cars }}</button>
+        </div>
+        <div class="main__table-pagination">
+            {% if current_page > 1 %}
+            <div class="main__table-pagination-prev">
+                <button onclick="goToPage({{ current_page - 1 }})"><img src="/static/dispatcher/img/ico/prev.png" alt="prev"></button>
+            </div>
+            {% endif %}
+            
+            {% for page_num in range(1, total_pages + 1) %}
+                {% if page_num == current_page %}
+                <div class="main__table-pagination-active main__table-pagination-item">
+                    <button>{{ page_num }}</button>
+                </div>
+                {% else %}
+                <div class="main__table-pagination-item">
+                    <button onclick="goToPage({{ page_num }})">{{ page_num }}</button>
+                </div>
+                {% endif %}
+            {% endfor %}
+            
+            {% if current_page < total_pages %}
+            <div class="main__table-pagination-next">
+                <button onclick="goToPage({{ current_page + 1 }})"><img src="/static/dispatcher/img/ico/next.png" alt="next"></button>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function goToPage(page) {
+        const url = new URL(window.location);
+        url.searchParams.set('page', page);
+        window.location.href = url.toString();
+    }
+    
+    $(document).ready(function() {
+        console.log('Страница автомобилей загружена');
+        console.log('Текущая страница: {{ current_page }}');
+        console.log('Всего страниц: {{ total_pages }}');
+    });
+</script>
+{% endblock %}

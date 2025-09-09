@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+python-jose[cryptography]
+passlib[bcrypt]
+python-multipart
+jinja2
+aiofiles
+python-dotenv
+sqlalchemy
+alembic
+asyncpg
+pydantic
+pydantic-settings
+httpx
+redis
+requests
+pytz

@@ -1,0 +1,128 @@
+{% extends "dispatcher/base.html" %}
+
+{% block title %}Водители - Taxi 2.0{% endblock %}
+
+{% block page_title %}Водители{% endblock %}
+
+{% block nav_drivers_active %}navbar__links-content-active{% endblock %}
+
+{% block header_search %}
+
+{% endblock %}
+
+{% block subheader %}
+<div class="main__subheader main__subheader-drivers">
+    <div class="main__subheader-add">
+        <div class="main__header-search-item">
+            <form action="#" style="background-color: #47484c;">
+                <input type="search" placeholder="Поиск">
+                <button style="padding: 0px;"><img src="/static/dispatcher/img/ico/search.png" alt="search"></button>
+            </form>
+        </div>
+        <div class="main__subheader-filing">
+            <form action="#">
+                <select name="filing-date">
+                    <option value="Состояние" disabled selected>Состояние</option>
+                    <option value="Занят">Свободен</option>
+                    <option value="В ожидании">Занят</option>
+                </select>
+            </form>
+        </div>
+    </div>
+    <div class="main__subheader-drivers">
+        <div class="main__subheader-balance">
+            <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
+            <p>Баланс: {{ "%.0f"|format(balance) if balance else "0" }}</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="main__drivers-table">
+    <div class="main__table main__paybalance-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>Состояние</th>
+                    <th>Позывной</th>
+                    <th>Ф.И.О</th>
+                    <th>Телефон</th>
+                    <th>Баланс</th>
+                    <th>ВУ</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if drivers %}
+                    {% for driver in drivers %}
+                    <tr>
+                        <td>
+                            <span class="{% if driver.is_active %}status-free{% else %}status-busy{% endif %}">
+                                {% if driver.is_active %}Свободен{% else %}Занят{% endif %}
+                            </span>
+                        </td>
+                        <td>Позывной</td>
+                        <td>{{ driver.first_name }} {{ driver.last_name }}</td>
+                        <td>{{ driver.phone }}</td>
+                        <td>{{ "%.0f"|format(driver.balance) if driver.balance else "0" }}</td>
+                        <td>{{ driver.car_number }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 20px; color: #888;">
+                            Водителей нет
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+        <div class="main__table-footer">
+            <div class="main__table-driver">
+                <button>Водители: {{ total_drivers }}</button>
+            </div>
+            <div class="main__table-pagination">
+                {% if current_page > 1 %}
+                <div class="main__table-pagination-prev">
+                    <button onclick="goToPage({{ current_page - 1 }})"><img src="/static/dispatcher/img/ico/prev.png" alt="prev"></button>
+                </div>
+                {% endif %}
+                
+                {% for page_num in range(1, total_pages + 1) %}
+                    {% if page_num == current_page %}
+                    <div class="main__table-pagination-active main__table-pagination-item">
+                        <button>{{ page_num }}</button>
+                    </div>
+                    {% else %}
+                    <div class="main__table-pagination-item">
+                        <button onclick="goToPage({{ page_num }})">{{ page_num }}</button>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if current_page < total_pages %}
+                <div class="main__table-pagination-next">
+                    <button onclick="goToPage({{ current_page + 1 }})"><img src="/static/dispatcher/img/ico/next.png" alt="next"></button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function goToPage(page) {
+        const url = new URL(window.location);
+        url.searchParams.set('page', page);
+        window.location.href = url.toString();
+    }
+    
+    $(document).ready(function() {
+        console.log('Страница водителей загружена');
+        console.log('Текущая страница: {{ current_page }}');
+        console.log('Всего страниц: {{ total_pages }}');
+    });
+</script>
+{% endblock %}

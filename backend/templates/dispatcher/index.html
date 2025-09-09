@@ -1,0 +1,77 @@
+{% extends "dispatcher/base.html" %}
+
+{% block title %}Главная Диспетчерская - Taxi 2.0{% endblock %}
+
+{% block nav_disp_active %}navbar__links-content-active{% endblock %}
+
+{% block content %}
+<div class="main__table">
+    <table>
+        <thead>
+            <tr>
+                <th>Номер заказа</th>
+                <th>Дата</th>
+                <th>Время</th>
+                <th>Статус</th>
+                <th>Телефон</th>
+                <th>Откуда</th>
+                <th>Куда</th>
+                <th>Водитель</th>
+                <th>Сумма</th>
+                <th>Тариф</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% if orders %}
+                {% for order in orders %}
+                <tr>
+                    <td>{{ order.id }}</td>
+                    <td>{{ order.created_at.strftime('%d.%m.%y') if order.created_at else '--' }}</td>
+                    <td>{{ order.created_at.strftime('%H:%M') if order.created_at else '--' }}</td>
+                    <td class="{% if order.status == 'completed' %}status-free{% elif order.status == 'cancelled' %}status-busy{% else %}status-free{% endif %}">
+                        {% if order.status == 'completed' %}Выполнен
+                        {% elif order.status == 'cancelled' %}Отменен
+                        {% elif order.status == 'in_progress' %}Выполняется
+                        {% else %}{{ order.status }}{% endif %}
+                    </td>
+                    <td>{{ order.client_phone if order.client_phone else '--' }}</td>
+                    <td>{{ order.pickup_address if order.pickup_address else '--' }}</td>
+                    <td>{{ order.destination_address if order.destination_address else '--' }}</td>
+                    <td>Позывной</td>
+                    <td>{{ order.price if order.price else '150' }}</td>
+                    <td>Комфорт</td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="10" style="text-align: center; padding: 20px; color: #888;">
+                        Заказов нет
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+    <div class="main__table-footer">
+        <div class="main__table-driver">
+            <button>Водители: {{ drivers_count if drivers_count else "0" }}</button>
+        </div>
+        <div class="main__table-pagination">
+            <div class="main__table-pagination-prev">
+                <button><img src="/static/dispatcher/img/ico/prev.png" alt="prev"></button>
+            </div>
+            <div class="main__table-pagination-active main__table-pagination-item">
+                <button>1</button>
+            </div>
+            <div class="main__table-pagination-item">
+                <button>2</button>
+            </div>
+            <div class="main__table-pagination-item">
+                <button>3</button>
+            </div>
+            <div class="main__table-pagination-next">
+                <button><img src="/static/dispatcher/img/ico/next.png" alt="next"></button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

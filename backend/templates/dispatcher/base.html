@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Диспетчерская - Taxi 2.0{% endblock %}</title>
+    <link rel="stylesheet" href="/static/dispatcher/css/main.css">
+    {% block extra_head %}{% endblock %}
+</head>
+<body>
+    <div class="wrapper">
+        <div class="navbar__settings navbar__menu">
+            <div class="navbar__menu-links">
+                <h4>Информация</h4>
+                <nav>
+                    <ul>
+                        <li><a href="#">Документы</a></li>
+                    </ul>
+                </nav>
+            </div>
+            <div class="navbar__menu-links">
+                <h4>Техподдержка</h4>
+                <nav>
+                    <ul>
+                        <li><a href="#">Техподдержка</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+        <div class="navbar__menu-info navbar__menu">
+            <div class="navbar__menu-links">
+                <h4>Диспетчерская</h4>
+                <nav>
+                    <ul>
+                        <li><a href="/disp/analytics">Статистика</a></li>
+                        <li><a href="/disp/balance-request">Запрос на баланс</a></li>
+                        <li><a href="/disp/new-order">Новый заказ</a></li>
+                    </ul>
+                </nav>
+            </div>
+            <div class="navbar__menu-links">
+                <h4>Автопарк</h4>
+                <nav>
+                    <ul>
+                        <li><a href="/disp/driver-create">Создание водителя</a></li>
+                        <li><a href="/disp/balance-topup">Пополнение баланса</a></li>
+                        <li><a href="/disp/drivers">Водители</a></li>
+                        <li><a href="/disp/cars">Автомобили</a></li>
+                        <li><a href="/disp/chat">Чат</a></li>
+                    </ul>
+                </nav>
+            </div>
+            <div class="navbar__menu-links">
+                <h4>Контроль</h4>
+                <nav>
+                    <ul>
+                        <li><a href="/disp/photo-control">Фото контроль</a></li>
+                    </ul>
+                </nav>
+            </div>
+        </div>
+        <div class="navbar__menu-settings navbar__menu">
+            <div class="navbar__menu-links">
+                <h4>Основные</h4>
+                <nav>
+                    <ul>
+                        <li><a href="#">Профиль партнера</a></li>
+                        <li><a href="#">Категория транзакций</a></li>
+                    </ul>
+                </nav>
+            </div>
+            <div class="navbar__menu-links" style="position: absolute; bottom: 10%;">
+                <h4>Интерфейс</h4>
+                <div class="main__subheader-filing">
+                    <h4>Язык Интерфейса</h4>
+                    <form action="#">
+                        <select name="filing-date" style="width: 100%;">
+                            <option value="Русский">Русский</option>
+                            <option value="Киргизский">Киргизский</option>
+                        </select>
+                    </form>
+                </div>
+                <div class="main__subheader-filing">
+                    <h4>Тема</h4>
+                    <form action="#">
+                        <select name="filing-date" style="width: 100%;">
+                            <option value="Ночная Тема">Ночная Тема</option>
+                            <option value="Светлая Тема">Светлая Тема</option>
+                        </select>
+                    </form>
+                </div>
+            </div>
+        </div>
+        <div class="navbar">
+            <div class="navbar__content">
+                <div class="navbar__logo">
+                    <a href="/disp/"><img src="/static/dispatcher/img/logo/logo_small.png" alt="logo"></a>
+                </div>
+                <div class="navbar__links">
+                    <div class="navbar__links-content">
+                        <a class="{% block nav_disp_active %}{% if request.url.path == '/' %}navbar__links-content-active{% endif %}{% endblock %}" href="/disp/"><img src="/static/dispatcher/img/ico/disp.png" alt="disp"></a>
+                        <a class="{% block nav_maps_active %}{% if '/disp/new-order' in request.url.path %}navbar__links-content-active{% endif %}{% endblock %}" href="/disp/new-order"><img src="/static/dispatcher/img/ico/maps.png" alt="maps"></a>
+                        <a class="{% block nav_drivers_active %}{% if '/disp/drivers' in request.url.path %}navbar__links-content-active{% endif %}{% endblock %}" href="/disp/drivers"><img src="/static/dispatcher/img/ico/user.png" alt="user"></a>
+                        <a class="{% block nav_cars_active %}{% if '/disp/cars' in request.url.path %}navbar__links-content-active{% endif %}{% endblock %}" href="/disp/cars"><img src="/static/dispatcher/img/ico/car.png" alt="car"></a>
+                        <a class="{% block nav_analytics_active %}{% if '/disp/analytics' in request.url.path %}navbar__links-content-active{% endif %}{% endblock %}" href="/disp/analytics"><img src="/static/dispatcher/img/ico/analytics.png" alt="analytics"></a>
+                    </div>
+                </div>
+                <div class="navbar__links">
+                    <div class="navbar__links-content">
+                        <a href="#" class="support"><img src="/static/dispatcher/img/ico/info.png" alt="info"></a>
+                        <a href="#" class="settings"><img src="/static/dispatcher/img/ico/settings.png" alt="settings"></a>
+                        <a href="#" class="menu"><img src="/static/dispatcher/img/ico/menu.png" alt="menu"></a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="main">
+            <div class="main__header">
+                <div class="main__header-logo" style="width: 280px;">
+                    <h3 class="name_taxopark">{% block page_title %}{% if dispatcher %}{{ dispatcher.taxipark.name }}{% else %}Ош Титан Парк{% endif %}{% endblock %}</h3>
+                </div>
+                <div class="main__header-tags">
+                    <ul>
+                        <li><a href="/disp/drivers">Водитель</a></li>
+                        <li><a href="/disp/cars">Автомобиль</a></li>
+                        <li><a href="/disp/photo-control">Фото контроль</a></li>
+                        <li>Тариф</li>
+                    </ul>
+                </div>
+                <div class="main__header-search">
+                    {% block header_search %}{% endblock %}
+                    <div class="main__header-search-profile">
+                        <div class="main__header-search-profile-item">
+                            <a href="#"><img src="/static/dispatcher/img/ico/notif.png" alt="notif"></a>
+                        </div>
+                        <div class="main__header-search-profile-item">
+                            <a href="/disp/profile"><img src="/static/dispatcher/img/ico/user.png" alt="profile"></a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% block subheader %}
+            <div class="main__subheader">
+                <div class="main__subheader-date">
+                    <form action="#">
+                        <input type="date" name="first-date-form" id="first-date-form" disabled>
+                        <p>-</p>
+                        <input type="date" name="last-date-form" id="last-date-form" disabled>
+                    </form>
+                </div>
+                <div class="main__subheader-add">
+                    <button><a href="/disp/new-order">+ Новый (F2)</a></button>
+                    <button>
+                        <span class="free"></span>
+                        Выполненные
+                    </button>
+                    <button>
+                        <span class="busy"></span>
+                        Отмененые
+                    </button>
+                    <button>
+                        <span class="cancelled"></span>
+                        Выполняющиеся
+                    </button>
+                </div>
+                <div class="main__subheader-balance">
+                    <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
+                    <p>Баланс: <span id="balance">{{ "%.0f"|format(balance) if balance else "0" }}</span></p>
+                </div>
+            </div>
+            {% endblock %}
+            {% block content %}{% endblock %}
+        </div>
+    </div>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <script src="/static/dispatcher/js/script.js"></script>
+    <script>
+        const taxiparkName = localStorage.getItem('taxipark_name');
+        if (taxiparkName) {
+            document.querySelector('.name_taxopark').textContent = taxiparkName;
+        }
+        
+        function logout() {
+            // Удаляем токен из cookies
+            document.cookie = 'dispatcher_token=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
+            
+            // Удаляем данные из localStorage
+            localStorage.removeItem('taxipark_id');
+            localStorage.removeItem('taxipark_name');
+            
+            window.location.href = '/disp/auth/login';
+        }
+    </script>
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>

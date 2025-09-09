@@ -1,0 +1,129 @@
+{% extends "dispatcher/base.html" %}
+
+{% block title %}Фото контроль - Taxi 2.0{% endblock %}
+
+{% block page_title %}Водители - Контроль{% endblock %}
+
+{% block header_search %}
+<!-- <div class="main__header-search-item">
+    <form action="#">
+        <input type="search" placeholder="Поиск">
+        <button><img src="/static/dispatcher/img/ico/search.png" alt="search"></button>
+    </form>
+</div> -->
+{% endblock %}
+
+{% block subheader %}
+<div class="main__subheader main__subheader-drivers">
+    <div class="main__subheader-add">
+        <!-- <div class="main__header-search-item">
+            <form action="#" style="background-color: #47484c;">
+                <input type="search" placeholder="Поиск">
+                <button style="padding: 0px;"><img src="/static/dispatcher/img/ico/search.png" alt="search"></button>
+            </form>
+        </div> -->
+        <div class="main__subheader-filing">
+            <form action="#" onchange="filterByStatus(this.value)">
+                <select name="status-filter">
+                    <option value="all" {% if current_status == "all" %}selected{% endif %}>Все статусы</option>
+                    <option value="approved" {% if current_status == "approved" %}selected{% endif %}>Принятые</option>
+                    <option value="rejected" {% if current_status == "rejected" %}selected{% endif %}>Отклоненные</option>
+                    <option value="pending" {% if current_status == "pending" %}selected{% endif %}>В ожидании</option>
+                </select>
+            </form>
+        </div>
+    </div>
+    <div class="main__subheader-drivers">
+        <!-- <div class="main__header-tags main__subheader-drivers-tags">
+            <ul>
+                <li>На линии {{ total_drivers }} водителей</li>
+                <li><span class="status-span free"></span> {{ active_drivers }} принятые</li>
+                <li><span class="status-span busy"></span> {{ inactive_drivers }} отклоненные</li>
+            </ul>
+        </div> -->
+        <div class="main__subheader-balance">
+            <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
+            <p>Баланс: {{ "%.0f"|format(balance) if balance else "0" }}</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="main__subheader-getbalance-title">
+    <h3>Запросы</h3>
+</div>
+<div class="main__cards-wrapper">
+    {% if drivers %}
+        {% for driver in drivers %}
+        <div class="main__card-item">
+            <img src="/static/dispatcher/img/passport/1.png" alt="driver-photo">
+            <button class="main__btn">{{ driver.first_name }} {{ driver.last_name }}</button>
+            <button class="main__btn">Дата регистрации: {{ driver.created_at.strftime('%d.%m.%Y') if driver.created_at else 'Не указано' }}</button>
+            <button class="main__btn">Посмотреть анкету</button>
+            <div class="main__card-btn">
+                {% if driver.is_active %}
+                    <button class="main__btn-green" onclick="updateDriverStatus({{ driver.id }}, false)">Отклонить</button>
+                    <button class="main__btn-short" disabled>Принят</button>
+                {% else %}
+                    <button class="main__btn-green" onclick="updateDriverStatus({{ driver.id }}, true)">Одобрить</button>
+                    <button class="main__btn-short" onclick="updateDriverStatus({{ driver.id }}, false)">Отменить</button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div style="text-align: center; padding: 40px; color: #888; grid-column: 1 / -1;">
+            <h3>Водителей нет</h3>
+            <p>Нет водителей для фото контроля</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function filterByStatus(status) {
+        const url = new URL(window.location);
+        if (status === 'all') {
+            url.searchParams.delete('status');
+        } else {
+            url.searchParams.set('status', status);
+        }
+        window.location.href = url.toString();
+    }
+    
+    function updateDriverStatus(driverId, isActive) {
+        if (confirm(isActive ? 'Одобрить водителя?' : 'Отклонить водителя?')) {
+            fetch('/disp/api/driver-status', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    driver_id: driverId,
+                    is_active: isActive
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                } else {
+                    alert('Ошибка при обновлении статуса водителя');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Ошибка при обновлении статуса водителя');
+            });
+        }
+    }
+    
+    $(document).ready(function() {
+        console.log('Страница фото контроля загружена');
+        console.log('Текущий статус: {{ current_status }}');
+        console.log('Всего водителей: {{ total_drivers }}');
+    });
+</script>
+{% endblock %}

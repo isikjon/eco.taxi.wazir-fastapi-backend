@@ -1,0 +1,164 @@
+{% extends "dispatcher/base.html" %}
+
+{% block title %}Пополнение баланса - Taxi 2.0{% endblock %}
+
+{% block page_title %}{{ taxipark.name if taxipark else 'Таксопарк' }}{% endblock %}
+
+{% block header_search %}
+<!-- <div class="main__header-search-item">
+    <form action="#">
+        <input type="search" placeholder="Поиск">
+        <button><img src="/static/dispatcher/img/ico/search.png" alt="search"></button>
+    </form>
+</div> -->
+{% endblock %}
+
+{% block subheader %}
+<div class="main__subheader main__subheader-paybalance">
+    <!-- <div class="main__subheader-add">
+        <button>Активные</button>
+        <button>Заблокированные</button>
+        <button>В ожидании</button>
+        <button>Отмененные</button>
+    </div> -->
+    <div class="main__subheader-balance">
+        <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
+        <p>Баланс: {{ "%.0f"|format(balance) if balance else "0" }}</p>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="main__paybalance">
+    <div class="main__table main__paybalance-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>Ф.И.О</th>
+                    <th>Позывной</th>
+                    <th>Телефон</th>
+                    <th>Автомобиль</th>
+                    <th>Марка</th>
+                    <th>Тариф</th>
+                    <th>Баланс</th>
+                    <th>Пополнение</th>
+                    <th>Подтвердить</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if drivers %}
+                    {% for driver in drivers %}
+                    <tr>
+                        <td>{{ driver.first_name }} {{ driver.last_name }}</td>
+                        <td>Позывной</td>
+                        <td><a href="tel:{{ driver.phone }}">{{ driver.phone if driver.phone else 'Не указан' }}</a></td>
+                        <td>{{ driver.car_model.split(' ')[0] if driver.car_model else 'Не указано' }}</td>
+                        <td>{{ driver.car_model.split(' ')[1] if driver.car_model and ' ' in driver.car_model else driver.car_model if driver.car_model else 'Не указано' }}</td>
+                        <td>Эконом</td>
+                        <td>{{ "%.0f"|format(driver.balance) if driver.balance else "0" }}</td>
+                        <td>
+                            <form class="main__paybalance-table-td">
+                                <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
+                                <input type="number" placeholder="{{ driver.balance if driver.balance else '0' }}" 
+                                       id="topup-{{ driver.id }}" min="0" step="0.01">
+                            </form>
+                        </td>
+                        <td>
+                            <button class="main__btn-short" onclick="topupBalance({{ driver.id }})">Подтвердить</button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr>
+                        <td colspan="9" style="text-align: center; padding: 20px; color: #888;">
+                            Водителей нет
+                        </td>
+                    </tr>
+                {% endif %}
+            </tbody>
+        </table>
+        <div class="main__table-footer">
+            <div class="main__table-driver">
+                <button>Водители: {{ total_drivers }}</button>
+            </div>
+            <div class="main__table-pagination">
+                {% if current_page > 1 %}
+                <div class="main__table-pagination-prev">
+                    <button onclick="goToPage({{ current_page - 1 }})"><img src="/static/dispatcher/img/ico/prev.png" alt="prev"></button>
+                </div>
+                {% endif %}
+                
+                {% for page_num in range(1, total_pages + 1) %}
+                    {% if page_num == current_page %}
+                    <div class="main__table-pagination-active main__table-pagination-item">
+                        <button>{{ page_num }}</button>
+                    </div>
+                    {% else %}
+                    <div class="main__table-pagination-item">
+                        <button onclick="goToPage({{ page_num }})">{{ page_num }}</button>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+                
+                {% if current_page < total_pages %}
+                <div class="main__table-pagination-next">
+                    <button onclick="goToPage({{ current_page + 1 }})"><img src="/static/dispatcher/img/ico/next.png" alt="next"></button>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function goToPage(page) {
+        const url = new URL(window.location);
+        url.searchParams.set('page', page);
+        window.location.href = url.toString();
+    }
+    
+    function topupBalance(driverId) {
+        const input = document.getElementById(`topup-${driverId}`);
+        const amount = parseFloat(input.value);
+        
+        if (!amount || amount <= 0) {
+            alert('Введите корректную сумму для пополнения');
+            return;
+        }
+        
+        if (confirm(`Пополнить баланс водителя на ${amount} сом?`)) {
+            fetch('/disp/api/topup-balance', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    driver_id: driverId,
+                    amount: amount
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Баланс успешно пополнен');
+                    location.reload();
+                } else {
+                    alert('Ошибка при пополнении баланса: ' + (data.message || 'Неизвестная ошибка'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Ошибка при пополнении баланса');
+            });
+        }
+    }
+    
+    $(document).ready(function() {
+        console.log('Страница пополнения баланса загружена');
+        console.log('Текущая страница: {{ current_page }}');
+        console.log('Всего страниц: {{ total_pages }}');
+    });
+</script>
+{% endblock %}

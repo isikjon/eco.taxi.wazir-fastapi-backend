@@ -1,0 +1,707 @@
+{% extends "dispatcher/base.html" %}
+
+{% block title %}Новый заказ - Taxi 2.0{% endblock %}
+
+{% block extra_head %}
+<script src="https://mapgl.2gis.com/api/js/v1?key=a5dd76ec-6e17-4b2a-b65f-e353f1088294"></script>
+<script>
+// Глобальная функция init2GISMap для 2ГИС карты
+function init2GISMap() {
+    // Проверяем, что MapGL загружен
+    if (typeof mapgl === 'undefined') {
+        console.error('2ГИС MapGL API не загружен');
+        return;
+    }
+    
+    // 2ГИС карта переменные
+    let map;
+    let markerA = null;
+    let markerB = null;
+    let currentTariff = null;
+    let currentTariffPrice = 0;
+    
+    // Тарифы (цены за км)
+    const tariffPrices = {
+        'Эконом': 48,
+        'Комфорт': 60,
+        'Бизнес': 80
+    };
+    
+    // Центр карты - Ош
+    const osh = [72.7985, 40.5283]; // [lng, lat] для 2ГИС
+    
+    // Инициализация карты
+    map = new mapgl.Map('map', {
+        center: osh,
+        zoom: 12,
+        key: 'a5dd76ec-6e17-4b2a-b65f-e353f1088294'
+    });
+    
+    // Обработчик клика по карте
+    map.on('click', function(event) {
+        const coords = event.lngLat;
+        const lng = coords[0];
+        const lat = coords[1];
+        
+        // Определяем, какую точку устанавливать
+        if (!markerA) {
+            setPointA([lng, lat]);
+            reverseGeocode(lat, lng, 'pickup-address');
+        } else if (!markerB) {
+            setPointB([lng, lat]);
+            reverseGeocode(lat, lng, 'destination-address');
+        } else {
+            // Если обе точки установлены, заменяем ближайшую
+            const distA = getDistance(markerA.getCoordinates(), [lng, lat]);
+            const distB = getDistance(markerB.getCoordinates(), [lng, lat]);
+            
+            if (distA < distB) {
+                setPointA([lng, lat]);
+                reverseGeocode(lat, lng, 'pickup-address');
+            } else {
+                setPointB([lng, lat]);
+                reverseGeocode(lat, lng, 'destination-address');
+            }
+        }
+    });
+    
+    // Инициализация обработчика выбора водителя
+    initDriverSelect();
+    
+    console.log('2ГИС карта инициализирована');
+    
+    // Делаем функции глобальными для доступа из HTML
+    window.map = map;
+    window.markerA = markerA;
+    window.markerB = markerB;
+    window.currentTariff = currentTariff;
+    window.currentTariffPrice = currentTariffPrice;
+    window.tariffPrices = tariffPrices;
+    
+    // Функция установки точки A
+    window.setPointA = function(coordinates) {
+        if (markerA) {
+            markerA.destroy();
+        }
+        markerA = new mapgl.Marker(map, {
+            coordinates: coordinates,
+            icon: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" fill="#4CAF50" stroke="#fff" stroke-width="2"/><text x="16" y="21" text-anchor="middle" fill="white" font-family="Arial" font-size="14" font-weight="bold">A</text></svg>')
+        });
+        
+        calculateRoute();
+    };
+    
+    // Функция установки точки B
+    window.setPointB = function(coordinates) {
+        if (markerB) {
+            markerB.destroy();
+        }
+        markerB = new mapgl.Marker(map, {
+            coordinates: coordinates,
+            icon: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" fill="#F44336" stroke="#fff" stroke-width="2"/><text x="16" y="21" text-anchor="middle" fill="white" font-family="Arial" font-size="14" font-weight="bold">B</text></svg>')
+        });
+        
+        calculateRoute();
+    };
+    
+    // Функция обратного геокодирования (упрощенная версия)
+    function reverseGeocode(lat, lng, inputId) {
+        // В реальном проекте здесь должен быть запрос к API геокодирования 2ГИС
+        const input = document.getElementById(inputId);
+        if (input) {
+            input.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
+        }
+    }
+    
+    // Установка точки А
+    function setPointA(location, address = null) {
+        // Удаляем предыдущий маркер
+        if (markerA) {
+            markerA.setMap(null);
+        }
+        
+        // Создаем новый маркер
+        markerA = new google.maps.Marker({
+            position: location,
+            map: map,
+            title: 'Точка А (откуда)',
+            label: 'A',
+            icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="16" cy="16" r="12" fill="#3b8c4d" stroke="white" stroke-width="2"/>
+                        <text x="16" y="21" text-anchor="middle" fill="white" font-size="14" font-weight="bold">A</text>
+                    </svg>
+                `)
+            }
+        });
+        
+        // Если адрес не передан, получаем его через геокодирование
+        if (!address) {
+            const geocoder = new google.maps.Geocoder();
+            geocoder.geocode({ location: location }, function(results, status) {
+                if (status === 'OK' && results[0]) {
+                    document.getElementById('pickup-address').value = results[0].formatted_address;
+                }
+            });
+        } else {
+            document.getElementById('pickup-address').value = address;
+        }
+        
+        // Пересчитываем маршрут если есть точка Б
+        if (markerB) {
+            calculateRoute();
+        }
+        
+        // Обновляем глобальную переменную
+        window.markerA = markerA;
+    }
+    
+    // Установка точки Б
+    function setPointB(location, address = null) {
+        // Удаляем предыдущий маркер
+        if (markerB) {
+            markerB.setMap(null);
+        }
+        
+        // Создаем новый маркер
+        markerB = new google.maps.Marker({
+            position: location,
+            map: map,
+            title: 'Точка Б (куда)',
+            label: 'B',
+            icon: {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
+                    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="16" cy="16" r="12" fill="#ff6b6b" stroke="white" stroke-width="2"/>
+                        <text x="16" y="21" text-anchor="middle" fill="white" font-size="14" font-weight="bold">B</text>
+                    </svg>
+                `)
+            }
+        });
+        
+        // Если адрес не передан, получаем его через геокодирование
+        if (!address) {
+            const geocoder = new google.maps.Geocoder();
+            geocoder.geocode({ location: location }, function(results, status) {
+                if (status === 'OK' && results[0]) {
+                    document.getElementById('destination-address').value = results[0].formatted_address;
+                }
+            });
+        } else {
+            document.getElementById('destination-address').value = address;
+        }
+        
+        // Пересчитываем маршрут если есть точка А
+        if (markerA) {
+            calculateRoute();
+        }
+        
+        // Обновляем глобальную переменную
+        window.markerB = markerB;
+    }
+    
+    // Расчет маршрута
+    function calculateRoute() {
+        if (!markerA || !markerB) {
+            alert('Установите обе точки А и Б');
+            return;
+        }
+        
+        const request = {
+            origin: markerA.getPosition(),
+            destination: markerB.getPosition(),
+            travelMode: google.maps.TravelMode.DRIVING,
+            unitSystem: google.maps.UnitSystem.METRIC
+        };
+        
+        directionsService.route(request, function(result, status) {
+            if (status === 'OK') {
+                directionsRenderer.setDirections(result);
+                displayRouteInfo(result);
+            } else {
+                alert('Не удалось построить маршрут: ' + status);
+            }
+        });
+    }
+    
+    // Инициализация обработчика выбора водителя
+    function initDriverSelect() {
+        const driverSelect = document.getElementById('driver-select');
+        if (!driverSelect) {
+            console.error('Селект водителей не найден');
+            return;
+        }
+        
+        driverSelect.addEventListener('change', function() {
+            const selectedOption = this.options[this.selectedIndex];
+            if (selectedOption.value) {
+                const tariff = selectedOption.getAttribute('data-tariff');
+                setDriverTariff(tariff);
+            } else {
+                clearTariff();
+            }
+        });
+    }
+    
+    // Установка тарифа водителя
+    function setDriverTariff(tariff) {
+        currentTariff = tariff;
+        currentTariffPrice = tariffPrices[tariff] || 0;
+        
+        // Обновляем отображение тарифа
+        const tariffDisplay = document.getElementById('tariff-display');
+        if (tariffDisplay) {
+            tariffDisplay.textContent = `Тариф: ${tariff} (${currentTariffPrice} сом/км)`;
+        }
+        
+        // Обновляем селект тарифа
+        const tariffSelect = document.getElementById('tariff-select');
+        if (tariffSelect) {
+            tariffSelect.value = tariff;
+        }
+        
+        // Пересчитываем стоимость если есть маршрут
+        if (markerA && markerB) {
+            calculateRoute();
+        }
+        
+        // Обновляем глобальные переменные
+        window.currentTariff = currentTariff;
+        window.currentTariffPrice = currentTariffPrice;
+    }
+    
+    // Очистка тарифа
+    function clearTariff() {
+        currentTariff = null;
+        currentTariffPrice = 0;
+        
+        const tariffDisplay = document.getElementById('tariff-display');
+        if (tariffDisplay) {
+            tariffDisplay.textContent = 'Тариф: не выбран';
+        }
+        
+        const tariffSelect = document.getElementById('tariff-select');
+        if (tariffSelect) {
+            tariffSelect.value = '';
+        }
+        
+        const priceDisplay = document.getElementById('price-display');
+        if (priceDisplay) {
+            priceDisplay.textContent = 'Цена: 0 сом';
+        }
+        
+        // Обновляем глобальные переменные
+        window.currentTariff = currentTariff;
+        window.currentTariffPrice = currentTariffPrice;
+    }
+    
+    // Отображение информации о маршруте
+    function displayRouteInfo(directions) {
+        const route = directions.routes[0];
+        const leg = route.legs[0];
+        
+        const distance = leg.distance.value / 1000; // в километрах
+        const duration = Math.round(leg.duration.value / 60); // в минутах
+        
+        const distanceDisplay = document.getElementById('distance-display');
+        const durationDisplay = document.getElementById('duration-display');
+        const priceDisplay = document.getElementById('price-display');
+        
+        if (distanceDisplay) {
+            distanceDisplay.textContent = `Расстояние: ${distance.toFixed(1)} км`;
+        }
+        if (durationDisplay) {
+            durationDisplay.textContent = `Время: ${duration} мин`;
+        }
+        
+        // Рассчитываем цену только если выбран тариф
+        if (currentTariff && currentTariffPrice > 0) {
+            const price = Math.round(distance * currentTariffPrice);
+            if (priceDisplay) {
+                priceDisplay.textContent = `Цена: ${price} сом`;
+            }
+        } else {
+            if (priceDisplay) {
+                priceDisplay.textContent = 'Цена: выберите водителя';
+            }
+        }
+    }
+    
+    // Сброс точек
+    function resetPoints() {
+        if (markerA) {
+            markerA.setMap(null);
+            markerA = null;
+        }
+        if (markerB) {
+            markerB.setMap(null);
+            markerB = null;
+        }
+        
+        // Очищаем маршрут
+        directionsRenderer.setDirections({ routes: [] });
+        
+        // Очищаем поля
+        const pickupInput = document.getElementById('pickup-address');
+        const destinationInput = document.getElementById('destination-address');
+        if (pickupInput) pickupInput.value = '';
+        if (destinationInput) destinationInput.value = '';
+        
+        // Сбрасываем информацию
+        const distanceDisplay = document.getElementById('distance-display');
+        const durationDisplay = document.getElementById('duration-display');
+        const priceDisplay = document.getElementById('price-display');
+        
+        if (distanceDisplay) distanceDisplay.textContent = 'Расстояние: 0 км';
+        if (durationDisplay) durationDisplay.textContent = 'Время: 0 мин';
+        if (priceDisplay) priceDisplay.textContent = 'Цена: 0 сом';
+        
+        // Обновляем глобальные переменные
+        window.markerA = markerA;
+        window.markerB = markerB;
+    }
+    
+    // Делаем функции глобальными
+    window.resetPoints = resetPoints;
+    window.calculateRoute = calculateRoute;
+}
+</script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCgctqtqKOus6A6cDJaOBqsyo4-3r3zuQA&libraries=places&callback=initMap&language=ru" async defer></script>
+{% endblock %}
+
+{% block page_title %}Новый заказ{% endblock %}
+
+{% block nav_maps_active %}navbar__links-content-active{% endblock %}
+
+{% block header_search %}
+
+{% endblock %}
+
+{% block subheader %}
+<div class="main__subheader main__subheader-drivers" style="margin-bottom: 20px;">
+    <div class="main__subheader-add">
+        <div class="main__header-search-item">
+            <button class="main__btn" onclick="createNewOrder()">+ Новый (F2)</button>
+        </div>
+    </div>
+    <div class="main__subheader-drivers">
+        <!-- <div class="main__header-tags main__subheader-drivers-tags">
+            <ul>
+                <li>На линии {{ drivers|length }} водителей</li>
+                <li><span class="status-span free"></span> {{ drivers|length }} свободный</li>
+                <li><span class="status-span busy"></span> 0 занят</li>
+            </ul>
+        </div> -->
+        <div class="main__subheader-balance">
+            <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
+            <p>Баланс: {{ "%.0f"|format(balance) if balance else "0" }}</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="main__order-wrapper" style="border-radius: 5px;">
+    <div class="main__order-wrapper-blocks">
+        <div class="main__order-settings">
+            <div class="main__order-header">
+                <div class="main__order-header-item">
+                    <p>Заказ №</p>
+                    <button class="main__btn-short" id="order-number">{{ order_number }}</button>
+                </div>
+                <div class="main__order-header-item">
+                    <p>Дата время</p>
+                    <button class="main__btn-short" id="order-date">{{ current_datetime.strftime('%d.%m.%y') }}</button>
+                    <button class="main__btn-short" id="order-time">{{ current_datetime.strftime('%H:%M:%S') }}</button>
+                </div>
+            </div>
+            <div class="main__order-subheader">
+                <div class="main__order-subheader-item">
+                    <div class="main__subheader-filing">
+                        <form action="#">
+                            <select name="driver-select" id="driver-select">
+                                <option value="" disabled selected>Водители</option>
+                                 {% for driver in drivers %}
+                                 <option value="{{ driver.id }}" data-tariff="{{ driver.tariff }}">{{ driver.first_name }} {{ driver.last_name }} - {{ driver.phone }}</option>
+                                 {% endfor %}
+                            </select>
+                        </form>
+                    </div>
+                    <div class="main__subheader-filing">
+                        <form action="#">
+                            <select name="tariff-select" id="tariff-select">
+                                <option value="" disabled selected>Тариф</option>
+                                <option value="Эконом">Эконом</option>
+                                <option value="Комфорт">Комфорт</option>
+                                <option value="Бизнес">Бизнес</option>
+                            </select>
+                        </form>
+                    </div>
+                    <div class="main__subheader-filing">
+                        <form action="#">
+                            <select name="payment-select" id="payment-select">
+                                <option value="" disabled selected>Оплата</option>
+                                <option value="Наличные">Наличные</option>
+                            </select>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            <div class="main__order-details">
+                <div class="main__order-details-item main__order-details-where">
+                    <input type="text" placeholder="Точка А (откуда)" id="pickup-address" class="main__order-input">
+                </div>
+                <div class="main__order-details-item main__order-details-whither">
+                    <input type="text" placeholder="Точка Б (куда)" id="destination-address" class="main__order-input">
+                </div>
+            </div>
+            <div class="main__order-notes">
+                <div class="main__order-notes-text">
+                    <form>
+                        <textarea id="order-notes" placeholder="Примечание" class="main__order-input" style="width: 670px;"></textarea>
+                    </form>
+                </div>
+            </div>
+            <div class="main__table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Заказ</th>
+                            <th>Время</th>
+                            <th>Откуда</th>
+                            <th>Куда</th>
+                            <th>Сумма</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% if recent_orders %}
+                            {% for order in recent_orders %}
+                            <tr>
+                                <td>{{ order.id }}</td>
+                                <td>{{ order.created_at.strftime('%H:%M %d.%m.%y') if order.created_at else 'Не указано' }}</td>
+                                <td>{{ order.pickup_address if order.pickup_address else 'Не указано' }}</td>
+                                <td>{{ order.destination_address if order.destination_address else 'Не указано' }}</td>
+                                <td>{{ "%.0f"|format(order.price) if order.price else "0" }}</td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <tr>
+                                <td colspan="5" style="text-align: center; padding: 20px; color: #888;">
+                                    Заказов нет
+                                </td>
+                            </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="main__order-map">
+            <div class="main__order-map-item" id="map" style="max-width: 620px;"></div>
+            <div class="main__order-map-settings">
+                <div class="main__order-map-settings">
+                    <button class="main__btn" onclick="resetPoints()">Сбросить точки</button>
+                </div>
+                <div class="main__order-map-settings-item">
+                    <div class="main__btn-short" id="distance-display">Расстояние: 0 км</div>
+                    <div class="main__btn-short" id="duration-display">Время: 0 мин</div>
+                </div>
+                <div class="main__order-map-settings-item">
+                    <div class="main__btn-short" id="tariff-display">Тариф: не выбран</div>
+                    <div class="main__btn-short" id="price-display">Цена: 0 сом</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="main__order-wrapper-btn">
+        <button class="main__btn-green" onclick="submitOrder()">Заказать</button>
+        <button class="main__btn" onclick="cancelOrder()">Отменить</button>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    function createNewOrder() {
+        // Генерируем новый номер заказа
+        const newOrderNumber = 'WDD10' + Math.floor(Math.random() * 9000000) + 1000000;
+        document.getElementById('order-number').textContent = newOrderNumber;
+        
+        // Обновляем дату (локальная дата)
+        const now = new Date();
+        document.getElementById('order-date').textContent = now.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
+        // Время обновится автоматически через updateKyrgyzstanTime()
+        
+         // Очищаем форму
+         document.getElementById('driver-select').value = '';
+         document.getElementById('tariff-select').value = '';
+         document.getElementById('payment-select').value = '';
+         document.getElementById('pickup-address').value = '';
+         document.getElementById('destination-address').value = '';
+         document.getElementById('order-notes').value = '';
+         
+         // Сбрасываем точки на карте
+         if (typeof resetPoints === 'function') {
+             resetPoints();
+         }
+    }
+    
+    function submitOrder() {
+        const orderData = {
+            order_number: document.getElementById('order-number').textContent,
+            driver_id: document.getElementById('driver-select').value,
+            tariff: document.getElementById('tariff-select').value,
+            payment_method: document.getElementById('payment-select').value,
+            pickup_address: document.getElementById('pickup-address').value,
+            destination_address: document.getElementById('destination-address').value,
+            notes: document.getElementById('order-notes').value
+        };
+        
+        // Валидация
+        if (!orderData.driver_id) {
+            alert('Выберите водителя');
+            return;
+        }
+        if (!orderData.tariff) {
+            alert('Выберите тариф');
+            return;
+        }
+        if (!orderData.payment_method) {
+            alert('Выберите способ оплаты');
+            return;
+        }
+        if (!orderData.pickup_address) {
+            alert('Введите адрес отправления');
+            return;
+        }
+        if (!orderData.destination_address) {
+            alert('Введите адрес назначения');
+            return;
+        }
+        
+        if (confirm('Создать заказ?')) {
+            fetch('/disp/api/create-order', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(orderData)
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    alert('Заказ успешно создан');
+                    location.reload();
+                } else {
+                    alert('Ошибка при создании заказа: ' + (data.message || 'Неизвестная ошибка'));
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                alert('Ошибка при создании заказа');
+            });
+        }
+    }
+    
+    function cancelOrder() {
+        if (confirm('Отменить создание заказа?')) {
+            createNewOrder(); // Очищаем форму
+        }
+    }
+    
+    // Функция для получения времени Кыргызстана (UTC+6)
+    async function updateKyrgyzstanTime() {
+        try {
+            // Используем UTC+6 напрямую
+            const response = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=Etc/GMT-6');
+            const data = await response.json();
+            
+            if (data.dateTime) {
+                const date = new Date(data.dateTime);
+                const timeString = date.toLocaleTimeString('ru-RU', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    second: '2-digit',
+                    timeZone: 'Etc/GMT-6'
+                });
+                document.getElementById('order-time').textContent = timeString;
+            }
+        } catch (error) {
+            console.error('Ошибка получения времени:', error);
+            // Fallback: вычисляем UTC+6 вручную
+            const now = new Date();
+            const kyrgyzstanTime = new Date(now.getTime() + (6 * 60 * 60 * 1000)); // UTC+6
+            document.getElementById('order-time').textContent = kyrgyzstanTime.toLocaleTimeString('ru-RU', { 
+                hour: '2-digit', 
+                minute: '2-digit',
+                second: '2-digit'
+            });
+        }
+    }
+    
+    // Обновляем время каждую секунду
+    updateKyrgyzstanTime(); // Первоначальное обновление
+    setInterval(updateKyrgyzstanTime, 1000);
+    
+
+     $(document).ready(function() {
+         console.log('Страница нового заказа загружена');
+         console.log('Номер заказа: {{ order_number }}');
+         console.log('Доступно водителей: {{ drivers|length }}');
+     });
+</script>
+
+<style>
+html {
+    overflow-y: scroll !important;
+}
+.main__order-input {
+    width: 100%;
+    padding: 10px;
+    background-color: #47484c;
+    border: 1px solid #666;
+    border-radius: 4px;
+    color: white;
+    font-size: 14px;
+}
+
+.main__order-input::placeholder {
+    color: #999;
+}
+
+.main__order-input:focus {
+    outline: none;
+    border-color: #3b8c4d;
+}
+.main__order-subheader-item {
+    width: 100%;
+}
+.main__subheader-filing {
+    width: 100%;
+}
+.main__order-subheader-item select {
+    width: 100%;
+}
+ .main__order-header {
+     width: 100%;
+     justify-content: space-between;
+ }
+
+ .main__order-map-settings-item {
+    margin: 10px 0;
+ }
+
+ /* Стили для Google Maps */
+ #map {
+     width: 100%;
+     height: 338px;
+     border-radius: 5px;
+ }
+
+ /* Стили для активного тарифа */
+ .tariff-active {
+     background-color: #3b8c4d !important;
+     color: white !important;
+ }
+</style>
+{% endblock %}
