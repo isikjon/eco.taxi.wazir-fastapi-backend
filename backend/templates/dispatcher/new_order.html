@@ -5,227 +5,287 @@
 {% block extra_head %}
 <script src="https://mapgl.2gis.com/api/js/v1?key=a5dd76ec-6e17-4b2a-b65f-e353f1088294"></script>
 <script>
-// Глобальная функция init2GISMap для 2ГИС карты
-function init2GISMap() {
-    // Проверяем, что MapGL загружен
-    if (typeof mapgl === 'undefined') {
-        console.error('2ГИС MapGL API не загружен');
-        return;
-    }
-    
-    // 2ГИС карта переменные
     let map;
     let markerA = null;
     let markerB = null;
     let currentTariff = null;
     let currentTariffPrice = 0;
+let currentRoute = null;
     
-    // Тарифы (цены за км)
     const tariffPrices = {
         'Эконом': 48,
         'Комфорт': 60,
         'Бизнес': 80
     };
     
-    // Центр карты - Ош
-    const osh = [72.7985, 40.5283]; // [lng, lat] для 2ГИС
+function initMap() {
+    if (typeof mapgl === 'undefined') {
+        console.error('2ГИС MapGL API не загружен');
+        return;
+    }
     
-    // Инициализация карты
+    const osh = [72.7985, 40.5283];
+    
     map = new mapgl.Map('map', {
         center: osh,
         zoom: 12,
         key: 'a5dd76ec-6e17-4b2a-b65f-e353f1088294'
     });
     
-    // Обработчик клика по карте
+    
     map.on('click', function(event) {
+        // Получаем координаты клика и проверяем их точность
         const coords = event.lngLat;
-        const lng = coords[0];
-        const lat = coords[1];
+        console.log('Клик по карте в координатах:', coords);
+        console.log('Тип события:', event.type);
+        console.log('Позиция клика на экране:', event.point);
         
-        // Определяем, какую точку устанавливать
         if (!markerA) {
-            setPointA([lng, lat]);
-            reverseGeocode(lat, lng, 'pickup-address');
+            setPointA(coords);
+            reverseGeocode(coords, 'pickup-address');
         } else if (!markerB) {
-            setPointB([lng, lat]);
-            reverseGeocode(lat, lng, 'destination-address');
+            setPointB(coords);
+            reverseGeocode(coords, 'destination-address');
         } else {
-            // Если обе точки установлены, заменяем ближайшую
-            const distA = getDistance(markerA.getCoordinates(), [lng, lat]);
-            const distB = getDistance(markerB.getCoordinates(), [lng, lat]);
-            
-            if (distA < distB) {
-                setPointA([lng, lat]);
-                reverseGeocode(lat, lng, 'pickup-address');
-            } else {
-                setPointB([lng, lat]);
-                reverseGeocode(lat, lng, 'destination-address');
+            // Если обе точки уже установлены, сбрасываем и начинаем заново
+            resetPoints();
+            setPointA(coords);
+            reverseGeocode(coords, 'pickup-address');
+        }
+    });
+
+    initDriverSelect();
+    console.log('2ГИС карта инициализирована');
+}
+
+function setPointA(coordinates) {
+    console.log('setPointA вызвана с координатами:', coordinates);
+    console.log('Тип coordinates:', typeof coordinates, 'Array.isArray:', Array.isArray(coordinates));
+    
+    if (markerA) {
+        markerA.destroy();
+    }
+    
+    // Убеждаемся что координаты в правильном формате [lon, lat]
+    let coords;
+    if (Array.isArray(coordinates)) {
+        coords = coordinates;
+    } else if (coordinates && typeof coordinates === 'object' && coordinates.lon !== undefined && coordinates.lat !== undefined) {
+        coords = [coordinates.lon, coordinates.lat];
+    } else if (coordinates && typeof coordinates === 'object' && coordinates.lng !== undefined && coordinates.lat !== undefined) {
+        coords = [coordinates.lng, coordinates.lat];
+    } else {
+        console.error('Неправильный формат координат для точки A:', coordinates);
+        return;
+    }
+    
+    console.log('Создаем маркер A с координатами:', coords);
+    
+    markerA = new mapgl.Marker(map, {
+        coordinates: coords,
+        icon: 'https://docs.2gis.com/img/dotMarker.svg'
+    });
+    
+    if (markerB) {
+        calculateRoute();
+    }
+}
+    
+function setPointB(coordinates) {
+    console.log('setPointB вызвана с координатами:', coordinates);
+    console.log('Тип coordinates:', typeof coordinates, 'Array.isArray:', Array.isArray(coordinates));
+    
+    if (markerB) {
+        markerB.destroy();
+    }
+    
+    // Убеждаемся что координаты в правильном формате [lon, lat]
+    let coords;
+    if (Array.isArray(coordinates)) {
+        coords = coordinates;
+    } else if (coordinates && typeof coordinates === 'object' && coordinates.lon !== undefined && coordinates.lat !== undefined) {
+        coords = [coordinates.lon, coordinates.lat];
+    } else if (coordinates && typeof coordinates === 'object' && coordinates.lng !== undefined && coordinates.lat !== undefined) {
+        coords = [coordinates.lng, coordinates.lat];
+    } else {
+        console.error('Неправильный формат координат для точки B:', coordinates);
+        return;
+    }
+    
+    console.log('Создаем маркер B с координатами:', coords);
+    
+    markerB = new mapgl.Marker(map, {
+        coordinates: coords,
+        icon: 'https://docs.2gis.com/img/dotMarker.svg'
+    });
+    
+    if (markerA) {
+        calculateRoute();
+    }
+}
+
+function reverseGeocode(coords, inputId) {
+    fetch(`https://catalog.api.2gis.com/3.0/items/geocode?lon=${coords[0]}&lat=${coords[1]}&fields=items.point&key=a5dd76ec-6e17-4b2a-b65f-e353f1088294`)
+        .then(response => response.json())
+        .then(data => {
+            const input = document.getElementById(inputId);
+            if (input && data.result && data.result.items && data.result.items.length > 0) {
+                input.value = data.result.items[0].full_name || `${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`;
+            } else if (input) {
+                input.value = `${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`;
             }
+        })
+        .catch(error => {
+            console.error('Ошибка геокодирования:', error);
+        const input = document.getElementById(inputId);
+        if (input) {
+                input.value = `${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`;
+            }
+        });
+}
+
+async function calculateRoute() {
+    if (!markerA || !markerB) {
+        return;
+    }
+    
+    const coordsA = markerA.getCoordinates();
+    const coordsB = markerB.getCoordinates();
+    
+    if (currentRoute) {
+        currentRoute.destroy();
+        currentRoute = null;
+    }
+    
+    console.log('Координаты для маршрута:', coordsA, coordsB);
+    
+    try {
+        const requestBody = {
+            points: [
+                { lat: coordsA[1], lon: coordsA[0] },
+                { lat: coordsB[1], lon: coordsB[0] }
+            ],
+            locale: "ru",
+            transport: "driving",
+            output: "detailed"
+        };
+        
+        console.log('Отправляем запрос к Routing API:', requestBody);
+        
+        const response = await fetch('https://routing.api.2gis.com/routing/7.0.0/global?key=a5dd76ec-6e17-4b2a-b65f-e353f1088294', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Ответ от Routing API:', data);
+        
+        if (data.status === 'OK' && data.result && data.result.length > 0) {
+            const route = data.result[0];
+            displayRouteInfo(route);
+            drawRouteOnMap(route);
+        } else {
+            console.error('Маршрут не найден:', data);
+            displayRouteError();
+        }
+        
+    } catch (error) {
+        console.error('Ошибка при запросе к Routing API:', error);
+        displayRouteError();
+    }
+}
+
+function displayRouteInfo(route) {
+    console.log('Обрабатываем данные маршрута:', route);
+    
+    const distanceDisplay = document.getElementById('distance-display');
+    const durationDisplay = document.getElementById('duration-display');
+    const priceDisplay = document.getElementById('price-display');
+    
+    const distance = route.total_distance ? (route.total_distance / 1000) : 0;
+    const duration = route.total_duration ? Math.round(route.total_duration / 60) : 0;
+    
+    console.log('Извлеченные данные - расстояние:', distance, 'км, время:', duration, 'мин');
+    
+    if (distanceDisplay) {
+        distanceDisplay.textContent = `Расстояние: ${distance.toFixed(1)} км`;
+    }
+    if (durationDisplay) {
+        durationDisplay.textContent = `Время: ${duration} мин`;
+    }
+
+    if (currentTariff && currentTariffPrice > 0) {
+        const price = Math.round(distance * currentTariffPrice);
+        if (priceDisplay) {
+            priceDisplay.textContent = `Цена: ${price} сом`;
+        }
+    } else {
+        if (priceDisplay) {
+            priceDisplay.textContent = 'Цена: выберите водителя';
+        }
+    }
+}
+
+function displayRouteError() {
+    const distanceDisplay = document.getElementById('distance-display');
+    const durationDisplay = document.getElementById('duration-display');
+    
+    if (distanceDisplay) distanceDisplay.textContent = 'Расстояние: ошибка';
+    if (durationDisplay) durationDisplay.textContent = 'Время: ошибка';
+}
+
+function drawRouteOnMap(route) {
+    if (!route.maneuvers || route.maneuvers.length === 0) {
+        console.error('Нет данных о маневрах для отрисовки маршрута');
+        return;
+    }
+    
+    const coordinates = [];
+    
+    route.maneuvers.forEach(maneuver => {
+        if (maneuver.outcoming_path && maneuver.outcoming_path.geometry) {
+            maneuver.outcoming_path.geometry.forEach(geometry => {
+                if (geometry.selection) {
+                    const linestring = geometry.selection
+                        .replace('LINESTRING(', '')
+                        .replace(')', '')
+                        .split(', ')
+                        .map(point => {
+                            const [lon, lat] = point.trim().split(' ').map(Number);
+                            return [lon, lat];
+                        });
+                    coordinates.push(...linestring);
+                }
+            });
         }
     });
     
-    // Инициализация обработчика выбора водителя
-    initDriverSelect();
-    
-    console.log('2ГИС карта инициализирована');
-    
-    // Делаем функции глобальными для доступа из HTML
-    window.map = map;
-    window.markerA = markerA;
-    window.markerB = markerB;
-    window.currentTariff = currentTariff;
-    window.currentTariffPrice = currentTariffPrice;
-    window.tariffPrices = tariffPrices;
-    
-    // Функция установки точки A
-    window.setPointA = function(coordinates) {
-        if (markerA) {
-            markerA.destroy();
+    if (coordinates.length > 0) {
+        console.log('Отрисовываем маршрут с координатами:', coordinates.length, 'точек');
+        
+        if (currentRoute) {
+            currentRoute.destroy();
         }
-        markerA = new mapgl.Marker(map, {
+        
+        currentRoute = new mapgl.Polyline(map, {
             coordinates: coordinates,
-            icon: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" fill="#4CAF50" stroke="#fff" stroke-width="2"/><text x="16" y="21" text-anchor="middle" fill="white" font-family="Arial" font-size="14" font-weight="bold">A</text></svg>')
+            width: 4,
+            color: '#3b8c4d'
         });
         
-        calculateRoute();
-    };
-    
-    // Функция установки точки B
-    window.setPointB = function(coordinates) {
-        if (markerB) {
-            markerB.destroy();
-        }
-        markerB = new mapgl.Marker(map, {
-            coordinates: coordinates,
-            icon: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32"><circle cx="16" cy="16" r="10" fill="#F44336" stroke="#fff" stroke-width="2"/><text x="16" y="21" text-anchor="middle" fill="white" font-family="Arial" font-size="14" font-weight="bold">B</text></svg>')
-        });
-        
-        calculateRoute();
-    };
-    
-    // Функция обратного геокодирования (упрощенная версия)
-    function reverseGeocode(lat, lng, inputId) {
-        // В реальном проекте здесь должен быть запрос к API геокодирования 2ГИС
-        const input = document.getElementById(inputId);
-        if (input) {
-            input.value = `${lat.toFixed(6)}, ${lng.toFixed(6)}`;
-        }
-    }
-    
-    // Установка точки А
-    function setPointA(location, address = null) {
-        // Удаляем предыдущий маркер
-        if (markerA) {
-            markerA.setMap(null);
-        }
-        
-        // Создаем новый маркер
-        markerA = new google.maps.Marker({
-            position: location,
-            map: map,
-            title: 'Точка А (откуда)',
-            label: 'A',
-            icon: {
-                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="16" cy="16" r="12" fill="#3b8c4d" stroke="white" stroke-width="2"/>
-                        <text x="16" y="21" text-anchor="middle" fill="white" font-size="14" font-weight="bold">A</text>
-                    </svg>
-                `)
-            }
-        });
-        
-        // Если адрес не передан, получаем его через геокодирование
-        if (!address) {
-            const geocoder = new google.maps.Geocoder();
-            geocoder.geocode({ location: location }, function(results, status) {
-                if (status === 'OK' && results[0]) {
-                    document.getElementById('pickup-address').value = results[0].formatted_address;
-                }
-            });
-        } else {
-            document.getElementById('pickup-address').value = address;
-        }
-        
-        // Пересчитываем маршрут если есть точка Б
-        if (markerB) {
-            calculateRoute();
-        }
-        
-        // Обновляем глобальную переменную
-        window.markerA = markerA;
-    }
-    
-    // Установка точки Б
-    function setPointB(location, address = null) {
-        // Удаляем предыдущий маркер
-        if (markerB) {
-            markerB.setMap(null);
-        }
-        
-        // Создаем новый маркер
-        markerB = new google.maps.Marker({
-            position: location,
-            map: map,
-            title: 'Точка Б (куда)',
-            label: 'B',
-            icon: {
-                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(`
-                    <svg width="32" height="32" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="16" cy="16" r="12" fill="#ff6b6b" stroke="white" stroke-width="2"/>
-                        <text x="16" y="21" text-anchor="middle" fill="white" font-size="14" font-weight="bold">B</text>
-                    </svg>
-                `)
-            }
-        });
-        
-        // Если адрес не передан, получаем его через геокодирование
-        if (!address) {
-            const geocoder = new google.maps.Geocoder();
-            geocoder.geocode({ location: location }, function(results, status) {
-                if (status === 'OK' && results[0]) {
-                    document.getElementById('destination-address').value = results[0].formatted_address;
-                }
-            });
-        } else {
-            document.getElementById('destination-address').value = address;
-        }
-        
-        // Пересчитываем маршрут если есть точка А
-        if (markerA) {
-            calculateRoute();
-        }
-        
-        // Обновляем глобальную переменную
-        window.markerB = markerB;
-    }
-    
-    // Расчет маршрута
-    function calculateRoute() {
-        if (!markerA || !markerB) {
-            alert('Установите обе точки А и Б');
-            return;
-        }
-        
-        const request = {
-            origin: markerA.getPosition(),
-            destination: markerB.getPosition(),
-            travelMode: google.maps.TravelMode.DRIVING,
-            unitSystem: google.maps.UnitSystem.METRIC
-        };
-        
-        directionsService.route(request, function(result, status) {
-            if (status === 'OK') {
-                directionsRenderer.setDirections(result);
-                displayRouteInfo(result);
+        console.log('Маршрут успешно отрисован');
             } else {
-                alert('Не удалось построить маршрут: ' + status);
-            }
-        });
+        console.error('Не удалось извлечь координаты маршрута');
+    }
     }
     
-    // Инициализация обработчика выбора водителя
     function initDriverSelect() {
         const driverSelect = document.getElementById('driver-select');
         if (!driverSelect) {
@@ -243,35 +303,255 @@ function init2GISMap() {
             }
         });
     }
+
+function initAddressAutocomplete() {
+    const pickupInput = document.getElementById('pickup-address');
+    const destinationInput = document.getElementById('destination-address');
     
-    // Установка тарифа водителя
+    if (pickupInput) {
+        setupAutocomplete(pickupInput, 'A');
+    }
+    if (destinationInput) {
+        setupAutocomplete(destinationInput, 'B');
+    }
+}
+
+function setupAutocomplete(input, pointType) {
+    let suggestionsList = null;
+    let currentSuggestions = [];
+    let selectedIndex = -1;
+    
+    function createSuggestionsList() {
+        suggestionsList = document.createElement('div');
+        suggestionsList.className = 'address-suggestions';
+        suggestionsList.style.cssText = `
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            background: white;
+            border: 1px solid #ddd;
+            border-top: none;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 1000;
+            display: none;
+        `;
+        input.parentNode.style.position = 'relative';
+        input.parentNode.appendChild(suggestionsList);
+    }
+    
+    function showSuggestions(suggestions) {
+        if (!suggestionsList) createSuggestionsList();
+        
+        currentSuggestions = suggestions;
+        selectedIndex = -1;
+        
+        if (suggestions.length === 0) {
+            suggestionsList.style.display = 'none';
+            return;
+        }
+        
+        suggestionsList.innerHTML = '';
+        suggestions.forEach((suggestion, index) => {
+            const item = document.createElement('div');
+            item.className = 'suggestion-item';
+            item.style.cssText = `
+                padding: 10px;
+                cursor: pointer;
+                border-bottom: 1px solid #eee;
+            `;
+            item.textContent = suggestion.full_name || suggestion.address_name;
+            
+            item.addEventListener('click', () => {
+                selectSuggestion(suggestion);
+            });
+            
+            item.addEventListener('mouseenter', () => {
+                selectedIndex = index;
+                updateSelection();
+            });
+            
+            suggestionsList.appendChild(item);
+        });
+        
+        suggestionsList.style.display = 'block';
+    }
+    
+    function updateSelection() {
+        const items = suggestionsList.querySelectorAll('.suggestion-item');
+        items.forEach((item, index) => {
+            if (index === selectedIndex) {
+                item.style.backgroundColor = '#f0f0f0';
+            } else {
+                item.style.backgroundColor = 'white';
+            }
+        });
+    }
+    
+    function selectSuggestion(suggestion) {
+        input.value = suggestion.full_name || suggestion.address_name;
+        suggestionsList.style.display = 'none';
+        
+        if (suggestion.point && suggestion.point.lat && suggestion.point.lon) {
+            const coords = [suggestion.point.lon, suggestion.point.lat];
+            
+            if (pointType === 'A') {
+                setPointA(coords);
+            } else {
+                setPointB(coords);
+            }
+        }
+    }
+    
+    let searchTimeout;
+    
+    input.addEventListener('input', function() {
+        const query = this.value.trim();
+        
+        clearTimeout(searchTimeout);
+        
+        if (query.length < 2) {
+            if (suggestionsList) {
+                suggestionsList.style.display = 'none';
+            }
+            return;
+        }
+        
+        searchTimeout = setTimeout(() => {
+            searchAddresses(query).then(showSuggestions);
+        }, 300);
+    });
+    
+    input.addEventListener('keydown', function(e) {
+        if (!suggestionsList || suggestionsList.style.display === 'none') return;
+        
+        switch(e.key) {
+            case 'ArrowDown':
+                e.preventDefault();
+                selectedIndex = Math.min(selectedIndex + 1, currentSuggestions.length - 1);
+                updateSelection();
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                selectedIndex = Math.max(selectedIndex - 1, -1);
+                updateSelection();
+                break;
+            case 'Enter':
+                e.preventDefault();
+                if (selectedIndex >= 0 && currentSuggestions[selectedIndex]) {
+                    selectSuggestion(currentSuggestions[selectedIndex]);
+                }
+                break;
+            case 'Escape':
+                suggestionsList.style.display = 'none';
+                break;
+        }
+    });
+    
+    document.addEventListener('click', function(e) {
+        if (!input.contains(e.target) && (!suggestionsList || !suggestionsList.contains(e.target))) {
+            if (suggestionsList) {
+                suggestionsList.style.display = 'none';
+            }
+        }
+    });
+}
+
+async function searchAddresses(query) {
+    console.log('Поиск адресов для запроса:', query);
+    
+    // Используем локальный поиск, который всегда работает
+    const localResults = searchLocalAddresses(query);
+    
+    if (localResults.length > 0) {
+        console.log('Найдено локальных результатов:', localResults.length);
+        return localResults;
+    }
+    
+    // Если локальный поиск не дал результатов, можно попробовать API (опционально)
+    // Пока отключаем API, так как он не работает с текущим ключом
+    console.log('Локальные результаты не найдены для запроса:', query);
+    return [];
+}
+
+function searchLocalAddresses(query) {
+    const oshAddresses = [
+        // Центральные улицы
+        { full_name: 'Ош, улица Ленина, 1', address_name: 'улица Ленина, 1', point: { lat: 40.5228, lon: 72.7889 } },
+        { full_name: 'Ош, улица Ленина, 50', address_name: 'улица Ленина, 50', point: { lat: 40.5235, lon: 72.7895 } },
+        { full_name: 'Ош, улица Ленина, 100', address_name: 'улица Ленина, 100', point: { lat: 40.5245, lon: 72.7905 } },
+        
+        { full_name: 'Ош, улица Курманжан Датка, 1', address_name: 'улица Курманжан Датка, 1', point: { lat: 40.5185, lon: 72.8015 } },
+        { full_name: 'Ош, улица Курманжан Датка, 25', address_name: 'улица Курманжан Датка, 25', point: { lat: 40.5190, lon: 72.8025 } },
+        { full_name: 'Ош, улица Курманжан Датка, 50', address_name: 'улица Курманжан Датка, 50', point: { lat: 40.5195, lon: 72.8035 } },
+        
+        { full_name: 'Ош, проспект Масалиева, 1', address_name: 'проспект Масалиева, 1', point: { lat: 40.5298, lon: 72.7956 } },
+        { full_name: 'Ош, проспект Масалиева, 80', address_name: 'проспект Масалиева, 80', point: { lat: 40.5308, lon: 72.7966 } },
+        { full_name: 'Ош, проспект Масалиева, 150', address_name: 'проспект Масалиева, 150', point: { lat: 40.5318, lon: 72.7976 } },
+        
+        // Другие улицы
+        { full_name: 'Ош, улица Исанова, 1', address_name: 'улица Исанова, 1', point: { lat: 40.5156, lon: 72.8142 } },
+        { full_name: 'Ош, улица Исанова, 30', address_name: 'улица Исанова, 30', point: { lat: 40.5166, lon: 72.8152 } },
+        
+        { full_name: 'Ош, улица Навои, 1', address_name: 'улица Навои, 1', point: { lat: 40.5089, lon: 72.8067 } },
+        { full_name: 'Ош, улица Навои, 25', address_name: 'улица Навои, 25', point: { lat: 40.5099, lon: 72.8077 } },
+        
+        { full_name: 'Ош, улица Кыргызстан, 1', address_name: 'улица Кыргызстан, 1', point: { lat: 40.5267, lon: 72.8123 } },
+        { full_name: 'Ош, улица Кыргызстан, 40', address_name: 'улица Кыргызстан, 40', point: { lat: 40.5277, lon: 72.8133 } },
+        
+        { full_name: 'Ош, улица Салиева, 1', address_name: 'улица Салиева, 1', point: { lat: 40.5034, lon: 72.8156 } },
+        { full_name: 'Ош, улица Токтогула, 1', address_name: 'улица Токтогула, 1', point: { lat: 40.5123, lon: 72.7934 } },
+        
+        // Популярные места
+        { full_name: 'Ош, Центральный рынок', address_name: 'Центральный рынок', point: { lat: 40.5189, lon: 72.7978 } },
+        { full_name: 'Ош, Автовокзал', address_name: 'Автовокзал', point: { lat: 40.5145, lon: 72.8089 } },
+        { full_name: 'Ош, Аэропорт', address_name: 'Аэропорт', point: { lat: 40.6089, lon: 72.7934 } },
+        { full_name: 'Ош, Университет', address_name: 'Университет', point: { lat: 40.5267, lon: 72.7889 } },
+        { full_name: 'Ош, Парк', address_name: 'Парк', point: { lat: 40.5198, lon: 72.8023 } },
+        { full_name: 'Ош, Больница', address_name: 'Больница', point: { lat: 40.5156, lon: 72.8067 } },
+        
+        // Микрорайоны
+        { full_name: 'Ош, микрорайон Арча-Бешик', address_name: 'микрорайон Арча-Бешик', point: { lat: 40.5345, lon: 72.8156 } },
+        { full_name: 'Ош, микрорайон Кок-Жар', address_name: 'микрорайон Кок-Жар', point: { lat: 40.5089, lon: 72.7823 } },
+        { full_name: 'Ош, микрорайон Жайма', address_name: 'микрорайон Жайма', point: { lat: 40.5423, lon: 72.8234 } }
+    ];
+    
+    const normalizedQuery = query.toLowerCase().trim();
+    
+    return oshAddresses.filter(addr => {
+        const fullNameMatch = addr.full_name.toLowerCase().includes(normalizedQuery);
+        const addressNameMatch = addr.address_name.toLowerCase().includes(normalizedQuery);
+        
+        // Также проверяем отдельные слова
+        const words = normalizedQuery.split(' ');
+        const wordsMatch = words.every(word => 
+            word.length < 2 || addr.full_name.toLowerCase().includes(word)
+        );
+        
+        return fullNameMatch || addressNameMatch || wordsMatch;
+    }).slice(0, 8); // Ограничиваем до 8 результатов
+}
+    
     function setDriverTariff(tariff) {
         currentTariff = tariff;
         currentTariffPrice = tariffPrices[tariff] || 0;
         
-        // Обновляем отображение тарифа
         const tariffDisplay = document.getElementById('tariff-display');
         if (tariffDisplay) {
             tariffDisplay.textContent = `Тариф: ${tariff} (${currentTariffPrice} сом/км)`;
         }
         
-        // Обновляем селект тарифа
         const tariffSelect = document.getElementById('tariff-select');
         if (tariffSelect) {
             tariffSelect.value = tariff;
         }
         
-        // Пересчитываем стоимость если есть маршрут
         if (markerA && markerB) {
             calculateRoute();
         }
-        
-        // Обновляем глобальные переменные
-        window.currentTariff = currentTariff;
-        window.currentTariffPrice = currentTariffPrice;
     }
     
-    // Очистка тарифа
     function clearTariff() {
         currentTariff = null;
         currentTariffPrice = 0;
@@ -290,65 +570,28 @@ function init2GISMap() {
         if (priceDisplay) {
             priceDisplay.textContent = 'Цена: 0 сом';
         }
-        
-        // Обновляем глобальные переменные
-        window.currentTariff = currentTariff;
-        window.currentTariffPrice = currentTariffPrice;
     }
     
-    // Отображение информации о маршруте
-    function displayRouteInfo(directions) {
-        const route = directions.routes[0];
-        const leg = route.legs[0];
-        
-        const distance = leg.distance.value / 1000; // в километрах
-        const duration = Math.round(leg.duration.value / 60); // в минутах
-        
-        const distanceDisplay = document.getElementById('distance-display');
-        const durationDisplay = document.getElementById('duration-display');
-        const priceDisplay = document.getElementById('price-display');
-        
-        if (distanceDisplay) {
-            distanceDisplay.textContent = `Расстояние: ${distance.toFixed(1)} км`;
-        }
-        if (durationDisplay) {
-            durationDisplay.textContent = `Время: ${duration} мин`;
-        }
-        
-        // Рассчитываем цену только если выбран тариф
-        if (currentTariff && currentTariffPrice > 0) {
-            const price = Math.round(distance * currentTariffPrice);
-            if (priceDisplay) {
-                priceDisplay.textContent = `Цена: ${price} сом`;
-            }
-        } else {
-            if (priceDisplay) {
-                priceDisplay.textContent = 'Цена: выберите водителя';
-            }
-        }
-    }
-    
-    // Сброс точек
     function resetPoints() {
         if (markerA) {
-            markerA.setMap(null);
+        markerA.destroy();
             markerA = null;
         }
         if (markerB) {
-            markerB.setMap(null);
+        markerB.destroy();
             markerB = null;
         }
         
-        // Очищаем маршрут
-        directionsRenderer.setDirections({ routes: [] });
+    if (currentRoute) {
+        currentRoute.destroy();
+        currentRoute = null;
+    }
         
-        // Очищаем поля
         const pickupInput = document.getElementById('pickup-address');
         const destinationInput = document.getElementById('destination-address');
         if (pickupInput) pickupInput.value = '';
         if (destinationInput) destinationInput.value = '';
         
-        // Сбрасываем информацию
         const distanceDisplay = document.getElementById('distance-display');
         const durationDisplay = document.getElementById('duration-display');
         const priceDisplay = document.getElementById('price-display');
@@ -356,18 +599,21 @@ function init2GISMap() {
         if (distanceDisplay) distanceDisplay.textContent = 'Расстояние: 0 км';
         if (durationDisplay) durationDisplay.textContent = 'Время: 0 мин';
         if (priceDisplay) priceDisplay.textContent = 'Цена: 0 сом';
-        
-        // Обновляем глобальные переменные
-        window.markerA = markerA;
-        window.markerB = markerB;
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (typeof mapgl !== 'undefined') {
+        initMap();
+    } else {
+        setTimeout(initMap, 1000);
     }
     
-    // Делаем функции глобальными
-    window.resetPoints = resetPoints;
-    window.calculateRoute = calculateRoute;
-}
+    initDriverSelect();
+    initAddressAutocomplete();
+    updateKyrgyzstanTime();
+    setInterval(updateKyrgyzstanTime, 1000);
+});
 </script>
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCgctqtqKOus6A6cDJaOBqsyo4-3r3zuQA&libraries=places&callback=initMap&language=ru" async defer></script>
 {% endblock %}
 
 {% block page_title %}Новый заказ{% endblock %}
@@ -523,16 +769,12 @@ function init2GISMap() {
 {% block extra_scripts %}
 <script>
     function createNewOrder() {
-        // Генерируем новый номер заказа
         const newOrderNumber = 'WDD10' + Math.floor(Math.random() * 9000000) + 1000000;
         document.getElementById('order-number').textContent = newOrderNumber;
-        
-        // Обновляем дату (локальная дата)
+
         const now = new Date();
         document.getElementById('order-date').textContent = now.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
-        // Время обновится автоматически через updateKyrgyzstanTime()
-        
-         // Очищаем форму
+
          document.getElementById('driver-select').value = '';
          document.getElementById('tariff-select').value = '';
          document.getElementById('payment-select').value = '';
@@ -540,7 +782,6 @@ function init2GISMap() {
          document.getElementById('destination-address').value = '';
          document.getElementById('order-notes').value = '';
          
-         // Сбрасываем точки на карте
          if (typeof resetPoints === 'function') {
              resetPoints();
          }
@@ -557,7 +798,6 @@ function init2GISMap() {
             notes: document.getElementById('order-notes').value
         };
         
-        // Валидация
         if (!orderData.driver_id) {
             alert('Выберите водителя');
             return;
@@ -605,14 +845,12 @@ function init2GISMap() {
     
     function cancelOrder() {
         if (confirm('Отменить создание заказа?')) {
-            createNewOrder(); // Очищаем форму
+            createNewOrder();
         }
     }
     
-    // Функция для получения времени Кыргызстана (UTC+6)
     async function updateKyrgyzstanTime() {
         try {
-            // Используем UTC+6 напрямую
             const response = await fetch('https://timeapi.io/api/Time/current/zone?timeZone=Etc/GMT-6');
             const data = await response.json();
             
@@ -638,8 +876,7 @@ function init2GISMap() {
             });
         }
     }
-    
-    // Обновляем время каждую секунду
+
     updateKyrgyzstanTime(); // Первоначальное обновление
     setInterval(updateKyrgyzstanTime, 1000);
     
@@ -691,14 +928,12 @@ html {
     margin: 10px 0;
  }
 
- /* Стили для Google Maps */
  #map {
      width: 100%;
      height: 338px;
      border-radius: 5px;
  }
 
- /* Стили для активного тарифа */
  .tariff-active {
      background-color: #3b8c4d !important;
      color: white !important;
