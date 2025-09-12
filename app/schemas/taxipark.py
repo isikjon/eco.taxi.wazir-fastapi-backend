@@ -5,6 +5,12 @@ from typing import Optional
 
 class TaxiParkBase(BaseModel):
     name: str
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    working_hours: Optional[str] = None
+    description: Optional[str] = None
     commission_percent: float = 15.0
 
 
@@ -14,6 +20,12 @@ class TaxiParkCreate(TaxiParkBase):
 
 class TaxiParkUpdate(BaseModel):
     name: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    working_hours: Optional[str] = None
+    description: Optional[str] = None
     commission_percent: Optional[float] = None
     income: Optional[float] = None
     drivers_count: Optional[int] = None
@@ -36,6 +48,12 @@ class TaxiParkResponse(TaxiParkBase):
 class TaxiParkList(BaseModel):
     id: int
     name: str
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    address: Optional[str] = None
+    working_hours: Optional[str] = None
+    description: Optional[str] = None
     created_at: datetime
     income: float
     drivers_count: int

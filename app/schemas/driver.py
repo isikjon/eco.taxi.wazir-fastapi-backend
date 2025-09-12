@@ -5,7 +5,7 @@ from datetime import datetime
 class DriverBase(BaseModel):
     first_name: str = Field(..., min_length=1, description="Имя водителя")
     last_name: str = Field(..., min_length=1, description="Фамилия водителя")
-    phone: str = Field(..., min_length=10, description="Телефон водителя")
+    phone_number: str = Field(..., min_length=10, description="Телефон водителя")
     car_model: str = Field(..., min_length=1, description="Модель автомобиля")
     car_number: str = Field(..., min_length=5, description="Номер автомобиля")
     balance: float = Field(default=0.0, description="Баланс водителя")

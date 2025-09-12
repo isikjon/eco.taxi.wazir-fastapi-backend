@@ -141,9 +141,31 @@ async def create_superadmin(
 async def get_taxiparks_list(db: Session = Depends(get_db)):
     """Получить список всех таксопарков"""
     try:
+        from app.models.driver import Driver
+        from app.models.administrator import Administrator
+        
         taxiparks = TaxiParkService.get_taxiparks(db)
-        return taxiparks
+        
+        # Подсчитываем реальное количество водителей и диспетчеров для каждого таксопарка
+        taxiparks_with_counts = []
+        for taxipark in taxiparks:
+            # Подсчитываем водителей
+            drivers_count = db.query(Driver).filter(Driver.taxipark_id == taxipark.id).count()
+            
+            # Подсчитываем диспетчеров (администраторов)
+            dispatchers_count = db.query(Administrator).filter(Administrator.taxipark_id == taxipark.id).count()
+            
+            # Обновляем счетчики в объекте
+            taxipark.drivers_count = drivers_count
+            taxipark.dispatchers_count = dispatchers_count
+            
+            taxiparks_with_counts.append(taxipark)
+        
+        return taxiparks_with_counts
     except Exception as e:
+        print(f"❌ ERROR: Ошибка при получении списка таксопарков: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при получении списка таксопарков: {str(e)}"
@@ -381,6 +403,193 @@ async def get_administrators_json_data():
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при получении данных из JSON: {str(e)}"
+        )
+
+@router.get("/api/drivers")
+async def get_drivers_list(db: Session = Depends(get_db)):
+    """Получить список всех водителей"""
+    try:
+        from app.models.driver import Driver
+        from app.models.taxipark import TaxiPark
+        
+        print(f"🔍 DEBUG: Запрос списка водителей")
+        
+        drivers = db.query(Driver).all()
+        print(f"🔍 DEBUG: Найдено водителей: {len(drivers)}")
+        
+        drivers_data = []
+        for driver in drivers:
+            taxipark_name = "Не указан"
+            if driver.taxipark_id:
+                taxipark = db.query(TaxiPark).filter(TaxiPark.id == driver.taxipark_id).first()
+                if taxipark:
+                    taxipark_name = taxipark.name
+            
+            drivers_data.append({
+                "id": driver.id,
+                "first_name": driver.first_name,
+                "last_name": driver.last_name,
+                "phone_number": driver.phone_number,
+                "car_model": driver.car_model,
+                "car_number": driver.car_number,
+                "balance": float(driver.balance) if driver.balance else 0.0,
+                "tariff": driver.tariff,
+                "taxipark_name": taxipark_name,
+                "is_active": driver.is_active,
+                "created_at": driver.created_at.isoformat() if driver.created_at else None,
+                "updated_at": driver.updated_at.isoformat() if driver.updated_at else None
+            })
+        
+        print(f"🔍 DEBUG: Подготовлено данных: {len(drivers_data)}")
+        return {"drivers": drivers_data, "count": len(drivers_data)}
+    except Exception as e:
+        print(f"❌ ERROR: Ошибка при получении списка водителей: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при получении списка водителей: {str(e)}"
+        )
+
+@router.delete("/api/drivers/{driver_id}")
+async def delete_driver(
+    driver_id: int,
+    reason: str,
+    db: Session = Depends(get_db)
+):
+    """Удалить водителя с указанием причины"""
+    try:
+        from app.models.driver import Driver
+        
+        driver = db.query(Driver).filter(Driver.id == driver_id).first()
+        if not driver:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Водитель не найден"
+            )
+        
+        # Сохраняем данные водителя перед удалением для мобильного приложения
+        driver_data = {
+            "id": driver.id,
+            "first_name": driver.first_name,
+            "last_name": driver.last_name,
+            "phone_number": driver.phone_number,
+            "deleted_reason": reason,
+            "deleted_at": datetime.now().isoformat(),
+            "contact_phone": "+996 559 868 878"
+        }
+        
+        # В реальном приложении здесь можно сохранить в отдельную таблицу deleted_drivers
+        # или отправить уведомление в мобильное приложение
+        
+        taxipark_id = driver.taxipark_id
+        db.delete(driver)
+        db.commit()
+        
+        # Обновляем счетчик водителей в таксопарке
+        TaxiParkService.update_drivers_count(db, taxipark_id)
+        
+        print(f"🗑️ Водитель {driver.first_name} {driver.last_name} удален. Причина: {reason}")
+        
+        return {
+            "message": "Водитель успешно удален",
+            "driver_data": driver_data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при удалении водителя: {str(e)}"
+        )
+
+@router.put("/api/drivers/{driver_id}/block")
+async def block_driver(
+    driver_id: int,
+    reason: str,
+    db: Session = Depends(get_db)
+):
+    """Заблокировать водителя с указанием причины"""
+    try:
+        from app.models.driver import Driver
+        from datetime import datetime
+        
+        driver = db.query(Driver).filter(Driver.id == driver_id).first()
+        if not driver:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Водитель не найден"
+            )
+        
+        # Сохраняем данные блокировки для мобильного приложения
+        block_data = {
+            "id": driver.id,
+            "first_name": driver.first_name,
+            "last_name": driver.last_name,
+            "phone_number": driver.phone_number,
+            "block_reason": reason,
+            "blocked_at": datetime.now().isoformat(),
+            "contact_phone": "+996 559 868 878"
+        }
+        
+        driver.is_active = False
+        db.commit()
+        db.refresh(driver)
+        
+        print(f"🚫 Водитель {driver.first_name} {driver.last_name} заблокирован. Причина: {reason}")
+        
+        return {
+            "message": "Водитель успешно заблокирован",
+            "driver_data": block_data
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при блокировке водителя: {str(e)}"
+        )
+
+@router.put("/api/drivers/{driver_id}/unblock")
+async def unblock_driver(
+    driver_id: int,
+    db: Session = Depends(get_db)
+):
+    """Разблокировать водителя"""
+    try:
+        from app.models.driver import Driver
+        
+        driver = db.query(Driver).filter(Driver.id == driver_id).first()
+        if not driver:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Водитель не найден"
+            )
+        
+        driver.is_active = True
+        db.commit()
+        db.refresh(driver)
+        
+        print(f"✅ Водитель {driver.first_name} {driver.last_name} разблокирован")
+        
+        return {
+            "message": "Водитель успешно разблокирован",
+            "driver": {
+                "id": driver.id,
+                "first_name": driver.first_name,
+                "last_name": driver.last_name,
+                "is_active": driver.is_active
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при разблокировке водителя: {str(e)}"
         )
 
 @router.get("/api/drivers/stats")

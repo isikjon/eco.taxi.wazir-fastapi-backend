@@ -9,7 +9,7 @@ class Driver(Base):
     id = Column(Integer, primary_key=True, index=True)
     first_name = Column(String, nullable=False)
     last_name = Column(String, nullable=False)
-    phone = Column(String, unique=True, nullable=False)
+    phone_number = Column(String, unique=True, nullable=False)
     car_model = Column(String, nullable=False)
     car_number = Column(String, unique=True, nullable=False)
     balance = Column(Float, default=0.0)
@@ -21,6 +21,7 @@ class Driver(Base):
     
     # Связи
     orders = relationship("Order", back_populates="driver")
+    taxipark = relationship("TaxiPark", back_populates="drivers")
 
     def __repr__(self):
         return f"<Driver(id={self.id}, name={self.first_name} {self.last_name}, balance={self.balance})>"
@@ -30,7 +31,7 @@ class Driver(Base):
             "id": self.id,
             "first_name": self.first_name,
             "last_name": self.last_name,
-            "phone": self.phone,
+            "phone_number": self.phone_number,
             "car_model": self.car_model,
             "car_number": self.car_number,
             "balance": self.balance,

@@ -144,8 +144,8 @@ body.login-page .flex-1 {
     background-color: white;
     border-radius: 0.5rem;
     padding: 2rem;
-    max-width: 28rem;
-    width: 100%;
+    max-width: 900px;
+    width: 900px;
     margin: 0 1rem;
 }
 

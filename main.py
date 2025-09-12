@@ -10,6 +10,9 @@ from app.api.superadmin.routes import router as superadmin_router
 from app.api.dispatcher.routes import router as dispatcher_router
 from app.middleware.dispatcher_auth import check_dispatcher_auth
 
+# Импортируем API endpoints для мобильного приложения
+from api import get_parks, send_sms_code, login_driver, register_driver, check_driver_status
+
 init_database()
 
 app = FastAPI(
@@ -68,6 +71,13 @@ for route in dispatcher_router.routes:
 
 app.include_router(dispatcher_router)
 
+# Подключаем API endpoints для мобильного приложения
+app.add_api_route("/api/parks", get_parks, methods=["GET"], tags=["mobile-api"])
+app.add_api_route("/api/sms/send", send_sms_code, methods=["POST"], tags=["mobile-api"])
+app.add_api_route("/api/drivers/login", login_driver, methods=["POST"], tags=["mobile-api"])
+app.add_api_route("/api/drivers/register", register_driver, methods=["POST"], tags=["mobile-api"])
+app.add_api_route("/api/drivers/status", check_driver_status, methods=["GET"], tags=["mobile-api"])
+
 print("✅ All routers included successfully")
 
 @app.get("/")
@@ -108,7 +118,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="127.0.0.1",
-        port=8084,
+        port=8000,
         reload=True,
         log_level="info"
     )

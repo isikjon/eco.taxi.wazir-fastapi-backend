@@ -61,11 +61,45 @@
                     <p class="text-gray-600">Управление водителями системы</p>
                 </div>
                 
-                <div class="bg-white rounded-lg shadow-sm border p-6">
-                    <div class="text-center py-12">
-                        <i class="ri-user-line text-6xl text-gray-300 mb-4"></i>
-                        <h3 class="text-xl font-semibold text-gray-600 mb-2">Раздел в разработке</h3>
-                        <p class="text-gray-500">Функционал управления водителями будет добавлен в следующем обновлении</p>
+                <div class="bg-white rounded-lg shadow-sm border">
+                    <div class="p-6 border-b">
+                        <div class="flex justify-between items-center">
+                            <h3 class="text-lg font-semibold text-gray-900">Список водителей</h3>
+                            <div class="flex items-center space-x-4">
+                                <span class="text-sm text-gray-600" id="drivers-count">Загрузка...</span>
+                                <button onclick="loadDrivers()" class="bg-[#048A81] text-white px-4 py-2 rounded-lg hover:bg-[#048A81]/90 transition-colors">
+                                    <i class="ri-refresh-line mr-2"></i>
+                                    Обновить
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <table class="w-full">
+                            <thead class="bg-gray-50">
+                                <tr>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Водитель</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Телефон</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Автомобиль</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Таксопарк</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Баланс</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата регистрации</th>
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
+                                </tr>
+                            </thead>
+                            <tbody id="drivers-table-body" class="bg-white divide-y divide-gray-200">
+                                <tr>
+                                    <td colspan="8" class="px-6 py-12 text-center">
+                                        <div class="flex flex-col items-center">
+                                            <i class="ri-loader-4-line text-2xl text-gray-400 animate-spin mb-2"></i>
+                                            <span class="text-gray-500">Загрузка водителей...</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
@@ -79,7 +113,209 @@
                 window.location.href = '/superadmin/login';
                 return;
             }
+            loadDrivers();
         });
+
+        async function loadDrivers() {
+            try {
+                const response = await fetch('/superadmin/api/drivers', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('superadmin_access_token')}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Ошибка загрузки данных');
+                }
+
+                const data = await response.json();
+                displayDrivers(data.drivers);
+                document.getElementById('drivers-count').textContent = `Всего водителей: ${data.count}`;
+            } catch (error) {
+                console.error('Ошибка:', error);
+                document.getElementById('drivers-table-body').innerHTML = `
+                    <tr>
+                        <td colspan="7" class="px-6 py-12 text-center">
+                            <div class="flex flex-col items-center">
+                                <i class="ri-error-warning-line text-2xl text-red-400 mb-2"></i>
+                                <span class="text-red-500">Ошибка загрузки данных</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }
+        }
+
+        function displayDrivers(drivers) {
+            const tbody = document.getElementById('drivers-table-body');
+            
+            if (drivers.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="8" class="px-6 py-12 text-center">
+                            <div class="flex flex-col items-center">
+                                <i class="ri-user-line text-2xl text-gray-400 mb-2"></i>
+                                <span class="text-gray-500">Водители не найдены</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            tbody.innerHTML = drivers.map(driver => `
+                <tr class="hover:bg-gray-50">
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="flex items-center">
+                            <div class="flex-shrink-0 h-10 w-10">
+                                <div class="h-10 w-10 rounded-full bg-[#048A81] flex items-center justify-center">
+                                    <span class="text-white font-medium text-sm">
+                                        ${driver.first_name.charAt(0)}${driver.last_name.charAt(0)}
+                                    </span>
+                                </div>
+                            </div>
+                            <div class="ml-4">
+                                <div class="text-sm font-medium text-gray-900">
+                                    ${driver.first_name} ${driver.last_name}
+                                </div>
+                                <div class="text-sm text-gray-500">
+                                    ID: ${driver.id}
+                                </div>
+                            </div>
+                        </div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        ${driver.phone_number}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <div class="text-sm text-gray-900">${driver.car_model}</div>
+                        <div class="text-sm text-gray-500">${driver.car_number}</div>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        ${driver.taxipark_name}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <span class="font-medium">${driver.balance.toFixed(2)} сом</span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap">
+                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full ${driver.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                            ${driver.is_active ? 'Активен' : 'Неактивен'}
+                        </span>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                        ${new Date(driver.created_at).toLocaleDateString('ru-RU')}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                        <div class="flex space-x-2">
+                            ${driver.is_active ? 
+                                `<button onclick="blockDriver(${driver.id}, '${driver.first_name} ${driver.last_name}')" 
+                                    class="bg-red-600 text-white px-3 py-1 rounded text-xs hover:bg-red-700 transition-colors">
+                                    <i class="ri-lock-line mr-1"></i>Заблокировать
+                                </button>` :
+                                `<button onclick="unblockDriver(${driver.id}, '${driver.first_name} ${driver.last_name}')" 
+                                    class="bg-green-600 text-white px-3 py-1 rounded text-xs hover:bg-green-700 transition-colors">
+                                    <i class="ri-lock-unlock-line mr-1"></i>Разблокировать
+                                </button>`
+                            }
+                            <button onclick="deleteDriver(${driver.id}, '${driver.first_name} ${driver.last_name}')" 
+                                class="bg-gray-600 text-white px-3 py-1 rounded text-xs hover:bg-gray-700 transition-colors">
+                                <i class="ri-delete-bin-line mr-1"></i>Удалить
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function deleteDriver(driverId, driverName) {
+            const reason = prompt(`Укажите причину удаления водителя ${driverName}:`);
+            if (!reason || reason.trim() === '') {
+                alert('Причина удаления обязательна!');
+                return;
+            }
+
+            if (!confirm(`Вы уверены, что хотите удалить водителя ${driverName}?\nПричина: ${reason}`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/superadmin/api/drivers/${driverId}?reason=${encodeURIComponent(reason)}`, {
+                    method: 'DELETE',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('superadmin_access_token')}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Ошибка при удалении водителя');
+                }
+
+                const result = await response.json();
+                alert(`Водитель ${driverName} успешно удален!\nПричина: ${reason}\nКонтакт для связи: +996 559 868 878`);
+                loadDrivers();
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Ошибка при удалении водителя');
+            }
+        }
+
+        async function blockDriver(driverId, driverName) {
+            const reason = prompt(`Укажите причину блокировки водителя ${driverName}:`);
+            if (!reason || reason.trim() === '') {
+                alert('Причина блокировки обязательна!');
+                return;
+            }
+
+            if (!confirm(`Вы уверены, что хотите заблокировать водителя ${driverName}?\nПричина: ${reason}`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/superadmin/api/drivers/${driverId}/block?reason=${encodeURIComponent(reason)}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('superadmin_access_token')}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Ошибка при блокировке водителя');
+                }
+
+                const result = await response.json();
+                alert(`Водитель ${driverName} успешно заблокирован!\nПричина: ${reason}\nКонтакт для связи: +996 559 868 878`);
+                loadDrivers();
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Ошибка при блокировке водителя');
+            }
+        }
+
+        async function unblockDriver(driverId, driverName) {
+            if (!confirm(`Вы уверены, что хотите разблокировать водителя ${driverName}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/superadmin/api/drivers/${driverId}/unblock`, {
+                    method: 'PUT',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('superadmin_access_token')}`
+                    }
+                });
+
+                if (!response.ok) {
+                    throw new Error('Ошибка при разблокировке водителя');
+                }
+
+                const result = await response.json();
+                alert(`Водитель ${driverName} успешно разблокирован!`);
+                loadDrivers();
+            } catch (error) {
+                console.error('Ошибка:', error);
+                alert('Ошибка при разблокировке водителя');
+            }
+        }
 
         function superadminLogout() {
             localStorage.removeItem('superadmin_access_token');

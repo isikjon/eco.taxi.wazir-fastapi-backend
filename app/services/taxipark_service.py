@@ -8,7 +8,6 @@ class TaxiParkService:
     
     @staticmethod
     def create_taxipark(db: Session, taxipark_data: TaxiParkCreate) -> TaxiPark:
-        """Создать новый таксопарк"""
         db_taxipark = TaxiPark(**taxipark_data.model_dump())
         db.add(db_taxipark)
         db.commit()
@@ -17,17 +16,14 @@ class TaxiParkService:
     
     @staticmethod
     def get_taxipark(db: Session, taxipark_id: int) -> Optional[TaxiPark]:
-        """Получить таксопарк по ID"""
         return db.query(TaxiPark).filter(TaxiPark.id == taxipark_id).first()
     
     @staticmethod
     def get_taxiparks(db: Session, skip: int = 0, limit: int = 100) -> List[TaxiPark]:
-        """Получить список таксопарков"""
         return db.query(TaxiPark).offset(skip).limit(limit).all()
     
     @staticmethod
     def update_taxipark(db: Session, taxipark_id: int, taxipark_data: TaxiParkUpdate) -> Optional[TaxiPark]:
-        """Обновить таксопарк"""
         db_taxipark = TaxiParkService.get_taxipark(db, taxipark_id)
         if not db_taxipark:
             return None
@@ -42,7 +38,6 @@ class TaxiParkService:
     
     @staticmethod
     def delete_taxipark(db: Session, taxipark_id: int) -> bool:
-        """Удалить таксопарк"""
         db_taxipark = TaxiParkService.get_taxipark(db, taxipark_id)
         if not db_taxipark:
             return False
@@ -53,14 +48,36 @@ class TaxiParkService:
     
     @staticmethod
     def get_taxipark_count(db: Session) -> int:
-        """Получить количество таксопарков"""
         return db.query(TaxiPark).count()
     
     @staticmethod
     def update_commission(db: Session, taxipark_id: int, commission_percent: float) -> Optional[TaxiPark]:
-        """Обновить процент комиссии"""
         return TaxiParkService.update_taxipark(
             db, 
             taxipark_id, 
             TaxiParkUpdate(commission_percent=commission_percent)
+        )
+    
+    @staticmethod
+    def update_drivers_count(db: Session, taxipark_id: int) -> Optional[TaxiPark]:
+        """Обновить количество водителей для таксопарка"""
+        from app.models.driver import Driver
+        
+        drivers_count = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).count()
+        return TaxiParkService.update_taxipark(
+            db, 
+            taxipark_id, 
+            TaxiParkUpdate(drivers_count=drivers_count)
+        )
+    
+    @staticmethod
+    def update_dispatchers_count(db: Session, taxipark_id: int) -> Optional[TaxiPark]:
+        """Обновить количество диспетчеров для таксопарка"""
+        from app.models.administrator import Administrator
+        
+        dispatchers_count = db.query(Administrator).filter(Administrator.taxipark_id == taxipark_id).count()
+        return TaxiParkService.update_taxipark(
+            db, 
+            taxipark_id, 
+            TaxiParkUpdate(dispatchers_count=dispatchers_count)
         )
