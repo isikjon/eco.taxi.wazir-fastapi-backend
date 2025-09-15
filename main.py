@@ -12,6 +12,9 @@ from app.middleware.dispatcher_auth import check_dispatcher_auth
 
 # Импортируем API endpoints для мобильного приложения
 from api import get_parks, send_sms_code, login_driver, register_driver, check_driver_status
+from api_balance import router as balance_router
+from api_driver_profile import router as driver_profile_router
+from api_photo_control import router as photo_control_router
 
 init_database()
 
@@ -50,6 +53,7 @@ async def dispatcher_auth_middleware(request: Request, call_next):
     return await check_dispatcher_auth(request, call_next)
 
 app.mount("/static", StaticFiles(directory="static"), name="static")
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
 for route in auth_router.routes:
@@ -77,6 +81,19 @@ app.add_api_route("/api/sms/send", send_sms_code, methods=["POST"], tags=["mobil
 app.add_api_route("/api/drivers/login", login_driver, methods=["POST"], tags=["mobile-api"])
 app.add_api_route("/api/drivers/register", register_driver, methods=["POST"], tags=["mobile-api"])
 app.add_api_route("/api/drivers/status", check_driver_status, methods=["GET"], tags=["mobile-api"])
+
+# Подключаем API endpoints для баланса и транзакций
+app.include_router(balance_router, tags=["balance-api"])
+
+# Подключаем API endpoints для профиля водителя
+app.include_router(driver_profile_router, tags=["driver-profile-api"])
+
+# Подключаем API endpoints для фотоконтроля
+for route in photo_control_router.routes:
+    if hasattr(route, 'path'):
+        print(f"    🔗 {route.methods} {route.path} -> {route.name}")
+
+app.include_router(photo_control_router, tags=["photo-control-api"])
 
 print("✅ All routers included successfully")
 
@@ -118,7 +135,7 @@ if __name__ == "__main__":
     uvicorn.run(
         "main:app",
         host="127.0.0.1",
-        port=8000,
+        port=8080,
         reload=True,
         log_level="info"
     )

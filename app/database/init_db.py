@@ -4,6 +4,7 @@ from app.models.driver import Driver
 from app.models.order import Order
 from app.models.taxipark import TaxiPark
 from app.models.administrator import Administrator
+from app.models.transaction import DriverTransaction
 from app.core.security import get_password_hash
 
 def init_database():
@@ -13,6 +14,7 @@ def init_database():
     Order.__table__.create(bind=engine, checkfirst=True)
     TaxiPark.__table__.create(bind=engine, checkfirst=True)
     Administrator.__table__.create(bind=engine, checkfirst=True)
+    DriverTransaction.__table__.create(bind=engine, checkfirst=True)
 
     db = SessionLocal()
 
@@ -34,7 +36,7 @@ def init_database():
             print("✅ Суперадмин 'Alexander' уже существует!")
 
         print("✅ База данных инициализирована успешно!")
-        print("📊 Созданы таблицы: superadmins, drivers, orders, taxiparks, administrators")
+        print("📊 Созданы таблицы: superadmins, drivers, orders, taxiparks, administrators, transactions")
 
     except Exception as e:
         print(f"❌ Ошибка при инициализации БД: {e}")

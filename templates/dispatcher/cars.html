@@ -18,41 +18,64 @@
 {% block subheader %}
 <div class="main__subheader main__cars-list">
     <div class="main__subheader-filing main__subheader-cars-filter">
-        <form action="#">
-            <select name="filing-date">
-                <option value="Статусы" disabled selected>Статусы</option>
-                <option value="Свободен">Свободен</option>
-                <option value="Занят">Занят</option>
+        <form method="GET" action="/disp/cars">
+            <select name="status" onchange="this.form.submit()">
+                <option value="all" {% if filters.status == "all" %}selected{% endif %}>Все статусы</option>
+                <option value="active" {% if filters.status == "active" %}selected{% endif %}>Активные</option>
+                <option value="inactive" {% if filters.status == "inactive" %}selected{% endif %}>Неактивные</option>
             </select>
         </form>
-        <form action="#">
-            <select name="filing-date">
-                <option value="Марка" disabled selected>Марка</option>
-                <option value="KIA">KIA</option>
-                <option value="Honda">Honda</option>
+        <form method="GET" action="/disp/cars">
+            <input type="hidden" name="status" value="{{ filters.status }}">
+            <input type="hidden" name="model" value="{{ filters.model }}">
+            <input type="hidden" name="color" value="{{ filters.color }}">
+            <input type="hidden" name="year" value="{{ filters.year }}">
+            <select name="brand" onchange="this.form.submit()">
+                <option value="" {% if not filters.brand %}selected{% endif %}>Все марки</option>
+                {% for brand_option in filter_options.brands %}
+                <option value="{{ brand_option }}" {% if filters.brand == brand_option %}selected{% endif %}>{{ brand_option }}</option>
+                {% endfor %}
             </select>
         </form>
-        <form action="#">
-            <select name="filing-date">
-                <option value="Модель" disabled selected>Модель</option>
-                <option value="Модель 1">Модель 1</option>
-                <option value="Модель 2">Модель 2</option>
+        <form method="GET" action="/disp/cars">
+            <input type="hidden" name="status" value="{{ filters.status }}">
+            <input type="hidden" name="brand" value="{{ filters.brand }}">
+            <input type="hidden" name="color" value="{{ filters.color }}">
+            <input type="hidden" name="year" value="{{ filters.year }}">
+            <select name="model" onchange="this.form.submit()">
+                <option value="" {% if not filters.model %}selected{% endif %}>Все модели</option>
+                {% for model_option in filter_options.models %}
+                <option value="{{ model_option }}" {% if filters.model == model_option %}selected{% endif %}>{{ model_option }}</option>
+                {% endfor %}
             </select>
         </form>
-        <form action="#">
-            <select name="filing-date">
-                <option value="Цвет" disabled selected>Цвет</option>
-                <option value="Белый">Белый</option>
-                <option value="Черный">Черный</option>
+        <form method="GET" action="/disp/cars">
+            <input type="hidden" name="status" value="{{ filters.status }}">
+            <input type="hidden" name="brand" value="{{ filters.brand }}">
+            <input type="hidden" name="model" value="{{ filters.model }}">
+            <input type="hidden" name="year" value="{{ filters.year }}">
+            <select name="color" onchange="this.form.submit()">
+                <option value="" {% if not filters.color %}selected{% endif %}>Все цвета</option>
+                {% for color_option in filter_options.colors %}
+                <option value="{{ color_option }}" {% if filters.color == color_option %}selected{% endif %}>{{ color_option }}</option>
+                {% endfor %}
             </select>
         </form>
-        <form action="#">
-            <select name="filing-date">
-                <option value="Год выпуска" disabled selected>Год выпуска</option>
-                <option value="2007">2007</option>
-                <option value="2007">2007</option>
+        <form method="GET" action="/disp/cars">
+            <input type="hidden" name="status" value="{{ filters.status }}">
+            <input type="hidden" name="brand" value="{{ filters.brand }}">
+            <input type="hidden" name="model" value="{{ filters.model }}">
+            <input type="hidden" name="color" value="{{ filters.color }}">
+            <select name="year" onchange="this.form.submit()">
+                <option value="" {% if not filters.year %}selected{% endif %}>Все годы</option>
+                {% for year_option in filter_options.years %}
+                <option value="{{ year_option }}" {% if filters.year == year_option %}selected{% endif %}>{{ year_option }}</option>
+                {% endfor %}
             </select>
         </form>
+        {% if has_filters %}
+        <a href="/disp/cars" class="main__btn-short">Сбросить</a>
+        {% endif %}
     </div>
     <div class="main__subheader-balance">
         <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
@@ -82,12 +105,12 @@
                 <tr>
                     <td>{{ car.car_model.split(' ')[0] if car.car_model else 'Не указано' }}</td>
                     <td>{{ car.car_model.split(' ')[1] if car.car_model and ' ' in car.car_model else car.car_model if car.car_model else 'Не указано' }}</td>
-                    <td>Не указано</td>
-                    <td>Не указано</td>
+                    <td>{{ car.car_color if car.car_color else 'Не указано' }}</td>
+                    <td>{{ car.car_year if car.car_year else 'Не указано' }}</td>
                     <td>{{ car.car_number if car.car_number else 'Не указано' }}</td>
-                    <td>Не указано</td>
-                    <td>Не указано</td>
-                    <td>Не указано</td>
+                    <td>{{ car.car_vin if car.car_vin else 'Не указано' }}</td>
+                    <td>{{ car.car_body_number if car.car_body_number else 'Не указано' }}</td>
+                    <td>{{ car.car_sts if car.car_sts else 'Не указано' }}</td>
                 </tr>
                 {% endfor %}
             {% else %}

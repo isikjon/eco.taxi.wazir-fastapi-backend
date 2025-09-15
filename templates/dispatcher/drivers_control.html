@@ -51,79 +51,439 @@
 
 {% block content %}
 <div class="main__subheader-getbalance-title">
-    <h3>Запросы</h3>
+    <h3>Запросы на фотоконтроль</h3>
 </div>
-<div class="main__cards-wrapper">
-    {% if drivers %}
-        {% for driver in drivers %}
-        <div class="main__card-item">
-            <img src="/static/dispatcher/img/passport/1.png" alt="driver-photo">
-            <button class="main__btn">{{ driver.first_name }} {{ driver.last_name }}</button>
-            <button class="main__btn">Дата регистрации: {{ driver.created_at.strftime('%d.%m.%Y') if driver.created_at else 'Не указано' }}</button>
-            <button class="main__btn">Посмотреть анкету</button>
-            <div class="main__card-btn">
-                {% if driver.is_active %}
-                    <button class="main__btn-green" onclick="updateDriverStatus({{ driver.id }}, false)">Отклонить</button>
-                    <button class="main__btn-short" disabled>Принят</button>
-                {% else %}
-                    <button class="main__btn-green" onclick="updateDriverStatus({{ driver.id }}, true)">Одобрить</button>
-                    <button class="main__btn-short" onclick="updateDriverStatus({{ driver.id }}, false)">Отменить</button>
-                {% endif %}
+<div class="main__cards-wrapper" id="verifications-container">
+    <div style="text-align: center; padding: 40px; color: #888; grid-column: 1 / -1;">
+        <h3>Загрузка заявок...</h3>
+    </div>
+</div>
+
+<!-- Модальное окно для отклонения -->
+<div id="rejectModal" style="display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5);">
+    <div style="background-color: white; margin: 10% auto; padding: 20px; border-radius: 8px; width: 90%; max-width: 500px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3>Отклонить заявку</h3>
+            <span onclick="closeRejectModal()" style="color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
+        </div>
+        <form id="rejectForm">
+            <div style="margin-bottom: 15px;">
+                <label style="display: block; margin-bottom: 5px; font-weight: 500;">Причина отклонения:</label>
+                <textarea id="rejectionReason" name="reason" placeholder="Укажите причину отклонения заявки..." required 
+                    style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 4px; resize: vertical; min-height: 80px;"></textarea>
+            </div>
+            <div style="display: flex; gap: 10px; justify-content: flex-end;">
+                <button type="button" onclick="closeRejectModal()" style="padding: 10px 20px; border: 1px solid #ccc; background: white; border-radius: 5px; cursor: pointer;">Отмена</button>
+                <button type="submit" style="padding: 10px 20px; border: none; background: #f44336; color: white; border-radius: 5px; cursor: pointer;">Отклонить</button>
+</div>
+        </form>
             </div>
         </div>
-        {% endfor %}
-    {% else %}
-        <div style="text-align: center; padding: 40px; color: #888; grid-column: 1 / -1;">
-            <h3>Водителей нет</h3>
-            <p>Нет водителей для фото контроля</p>
+
+<!-- Модальное окно для просмотра фотографий -->
+<div id="photosModal" style="display: none; position: fixed; z-index: 1001; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(44, 45, 49, 0.95);">
+    <div style="background-color: #47484c; margin: 2% auto; padding: 20px; border-radius: 8px; width: 95%; max-width: 1000px; max-height: 90vh; overflow-y: auto; border: 1px solid #535357;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; border-bottom: 1px solid #535357; padding-bottom: 15px;">
+            <h2 style="color: #fff; margin: 0; font-weight: 400;">Документы водителя</h2>
+            <span onclick="closePhotosModal()" style="color: #fff; font-size: 28px; font-weight: bold; cursor: pointer; padding: 5px 10px; border-radius: 5px; transition: background 0.3s;" onmouseover="this.style.background='#535357'" onmouseout="this.style.background='transparent'">&times;</span>
         </div>
-    {% endif %}
+        <div id="photosContent">
+            <!-- Содержимое будет загружено динамически -->
+        </div>
+        </div>
 </div>
+
+<style>
+.photos-header {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 1px solid #535357;
+}
+
+.photos-header h3 {
+    margin: 0 0 10px 0;
+    color: #fff;
+    font-weight: 400;
+}
+
+.photos-header p {
+    margin: 0;
+    color: #ccc;
+    font-size: 14px;
+}
+
+.photos-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+}
+
+.photo-item {
+    background: #2d3b42;
+    border-radius: 8px;
+    padding: 15px;
+    text-align: center;
+    border: 1px solid #535357;
+    transition: all 0.3s ease;
+}
+
+.photo-item:hover {
+    background: #535357;
+    transform: translateY(-2px);
+}
+
+.photo-item h4 {
+    margin: 0 0 15px 0;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 400;
+}
+
+.photo-item img {
+    max-width: 100%;
+    max-height: 300px;
+    border-radius: 5px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    transition: transform 0.3s ease;
+    background: #5f6063;
+}
+
+.photo-item img:hover {
+    transform: scale(1.05);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.4);
+}
+
+.photo-error {
+    color: #ff6b6b;
+    font-size: 14px;
+    padding: 20px;
+    background: #2c2d31;
+    border-radius: 5px;
+    border: 1px dashed #ff6b6b;
+}
+
+@media (max-width: 768px) {
+    .photos-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    #photosModal > div {
+        margin: 5% auto;
+        width: 98%;
+        padding: 15px;
+    }
+}
+</style>
+
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-    function filterByStatus(status) {
-        const url = new URL(window.location);
-        if (status === 'all') {
-            url.searchParams.delete('status');
-        } else {
-            url.searchParams.set('status', status);
+    let currentVerificationId = null;
+
+    // Загрузка данных при загрузке страницы
+    document.addEventListener('DOMContentLoaded', function() {
+        loadPendingVerifications();
+        
+        // Обновляем каждые 30 секунд
+        setInterval(() => {
+            loadPendingVerifications();
+        }, 30000);
+    });
+
+    // Загрузка заявок на проверку
+    async function loadPendingVerifications() {
+        try {
+            const response = await fetch('/api/photo-control/pending?taxipark_id={{ taxipark_id }}');
+            const verifications = await response.json();
+            
+            const container = document.getElementById('verifications-container');
+            
+            if (verifications.length === 0) {
+                container.innerHTML = `
+                    <div style="text-align: center; padding: 40px; color: #888; grid-column: 1 / -1; margin: 0 auto;">
+                        <h3>Нет заявок на проверку</h3>
+                        <p>Заявки на фотоконтроль появятся здесь</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            verifications.forEach(verification => {
+                html += createVerificationCard(verification);
+            });
+            
+            container.innerHTML = html;
+        } catch (error) {
+            console.error('Ошибка загрузки заявок:', error);
+            document.getElementById('verifications-container').innerHTML = `
+                <div style="text-align: center; padding: 40px; color: #f44336; grid-column: 1 / -1;">
+                    <h3>Ошибка загрузки</h3>
+                    <p>Не удалось загрузить заявки на проверку</p>
+                </div>
+            `;
         }
-        window.location.href = url.toString();
     }
-    
-    function updateDriverStatus(driverId, isActive) {
-        if (confirm(isActive ? 'Одобрить водителя?' : 'Отклонить водителя?')) {
-            fetch('/disp/api/driver-status', {
+
+    // Создание карточки заявки
+    function createVerificationCard(verification) {
+        const date = new Date(verification.submission_date).toLocaleString('ru-RU');
+        const photosCount = Object.keys(verification.photos || {}).length;
+        
+        return `
+            <div class="main__card-item">
+                <img src="/static/dispatcher/img/passport/1.png" alt="driver-photo">
+                <button class="main__btn">${verification.driver_name}</button>
+                <button class="main__btn">${verification.driver_phone}</button>
+                <button class="main__btn">Дата подачи: ${date}</button>
+                <button class="main__btn">Фотографий: ${photosCount}</button>
+                <button class="main__btn" onclick="viewAllPhotos(${verification.id})">Посмотреть анкету</button>
+                <div class="main__card-btn">
+                    <button class="main__btn-green" onclick="approveVerification(${verification.id})">Одобрить</button>
+                    <button class="main__btn-short" onclick="showRejectModal(${verification.id})">Отклонить</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // Просмотр всех фотографий
+    function viewAllPhotos(verificationId) {
+        fetch(`/api/photo-control/verification/${verificationId}`)
+            .then(response => response.json())
+            .then(verification => {
+                showPhotosModal(verification);
+            })
+            .catch(error => {
+                console.error('Ошибка получения деталей:', error);
+                alert('Ошибка при загрузке фотографий');
+            });
+    }
+
+    // Обработчик ошибки загрузки изображения
+    function handleImageError(imgElement, originalPath, cleanPath) {
+        console.log('❌ Ошибка загрузки:', cleanPath);
+        imgElement.parentElement.innerHTML = `
+            <h4>${imgElement.alt}</h4>
+            <div class="photo-error">
+                <p>Ошибка загрузки фото</p>
+                <small>Путь: ${cleanPath}</small>
+                <br><small>Оригинальный: ${originalPath}</small>
+            </div>
+        `;
+    }
+
+    // Показать модальное окно с фотографиями
+    function showPhotosModal(verification) {
+        const modal = document.getElementById('photosModal');
+        const content = document.getElementById('photosContent');
+        
+        let photosHtml = `
+            <div class="photos-header">
+                <h3>Документы водителя: ${verification.driver_name || verification.driver_phone}</h3>
+                <p>Дата подачи: ${new Date(verification.created_at).toLocaleString('ru-RU')}</p>
+            </div>
+            <div class="photos-grid">
+        `;
+        
+        const photos = verification.photos || {};
+        const hasPhotos = Object.keys(photos).length > 0;
+        
+        if (!hasPhotos) {
+            photosHtml += `
+                <div class="photo-error" style="grid-column: 1 / -1;">
+                    <h4>Фотографии не найдены</h4>
+                    <p>Возможно, фотографии еще загружаются или произошла ошибка при загрузке.</p>
+                </div>
+            `;
+        } else {
+            Object.entries(photos).forEach(([type, path], index) => {
+                const label = getPhotoLabel(type);
+                
+                // Проверяем, является ли путь blob-ссылкой
+                if (path && path.startsWith('blob:')) {
+                    photosHtml += `
+                        <div class="photo-item">
+                            <h4>${label}</h4>
+                            <div class="photo-error">
+                                <p>Фото временно недоступно</p>
+                                <small>Blob-ссылка: ${path.substring(0, 50)}...</small>
+                            </div>
+                        </div>
+                    `;
+                } else if (path) {
+                    // Экранируем путь для безопасного использования в HTML
+                    let cleanPath = path;
+                    // Если путь содержит +, заменяем его на URL-кодированную версию
+                    if (path.includes('+')) {
+                        cleanPath = path.replace(/\+/g, '%2B');
+                    }
+                    const escapedPath = cleanPath.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+                    const safeLabel = label.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+                    const safeOriginalPath = path.replace(/'/g, '&#39;').replace(/"/g, '&quot;');
+                    const imgId = `photo-img-${index}`;
+                    
+                    photosHtml += `
+                        <div class="photo-item">
+                            <h4>${safeLabel}</h4>
+                            <img id="${imgId}" 
+                                 src="${escapedPath}" 
+                                 alt="${safeLabel}" 
+                                 onclick="openImageInNewTab('${escapedPath}')" 
+                                 style="cursor: pointer; max-width: 100%; height: auto;" 
+                                 onload="console.log('✅ Изображение загружено: ${escapedPath}')">
+                        </div>
+                    `;
+                } else {
+                    photosHtml += `
+                        <div class="photo-item">
+                            <h4>${label}</h4>
+                            <div class="photo-error">
+                                <p>Фото не загружено</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            });
+        }
+        
+        photosHtml += '</div>';
+        content.innerHTML = photosHtml;
+        
+        // Добавляем обработчики ошибок после создания элементов
+        if (hasPhotos) {
+            Object.entries(photos).forEach(([type, path], index) => {
+                if (path && !path.startsWith('blob:')) {
+                    const imgId = `photo-img-${index}`;
+                    const imgElement = document.getElementById(imgId);
+                    if (imgElement) {
+                        let cleanPath = path;
+                        if (path.includes('+')) {
+                            cleanPath = path.replace(/\+/g, '%2B');
+                        }
+                        imgElement.onerror = function() {
+                            handleImageError(this, path, cleanPath);
+                        };
+                    }
+                }
+            });
+        }
+        
+        modal.style.display = 'block';
+    }
+
+    // Закрыть модальное окно с фотографиями
+    function closePhotosModal() {
+        document.getElementById('photosModal').style.display = 'none';
+    }
+
+    // Открыть изображение в новой вкладке
+    function openImageInNewTab(imagePath) {
+        window.open(imagePath, '_blank');
+    }
+
+    // Получение названия фото по типу
+    function getPhotoLabel(type) {
+        const labels = {
+            'front': 'Лицевая сторона ВУ',
+            'back': 'Обратная сторона ВУ',
+            'selfie': 'Селфи с ВУ',
+            'sts_front': 'Лицевая сторона СТС',
+            'sts_back': 'Обратная сторона СТС',
+            'car_front': 'Автомобиль спереди',
+            'car_back': 'Автомобиль сзади',
+            'car_left': 'Автомобиль слева',
+            'car_right': 'Автомобиль справа',
+            'vin': 'VIN номер'
+        };
+        return labels[type] || type;
+    }
+
+    // Одобрение заявки
+    async function approveVerification(verificationId) {
+        if (!confirm('Одобрить эту заявку?')) return;
+        
+        try {
+            const response = await fetch('/api/photo-control/approve', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({
-                    driver_id: driverId,
-                    is_active: isActive
+                    verification_id: verificationId,
+                    action: 'approve'
                 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    location.reload();
-                } else {
-                    alert('Ошибка при обновлении статуса водителя');
-                }
-            })
-            .catch(error => {
-                console.error('Error:', error);
-                alert('Ошибка при обновлении статуса водителя');
             });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert('Заявка одобрена!');
+                loadPendingVerifications();
+                } else {
+                alert('Ошибка при одобрении заявки');
+            }
+        } catch (error) {
+            console.error('Ошибка одобрения:', error);
+            alert('Ошибка при одобрении заявки');
         }
     }
-    
-    $(document).ready(function() {
-        console.log('Страница фото контроля загружена');
-        console.log('Текущий статус: {{ current_status }}');
-        console.log('Всего водителей: {{ total_drivers }}');
+
+    // Показать модальное окно отклонения
+    function showRejectModal(verificationId) {
+        currentVerificationId = verificationId;
+        document.getElementById('rejectModal').style.display = 'block';
+        document.getElementById('rejectionReason').value = '';
+    }
+
+    // Закрыть модальное окно отклонения
+    function closeRejectModal() {
+        document.getElementById('rejectModal').style.display = 'none';
+        currentVerificationId = null;
+    }
+
+    // Обработка формы отклонения
+    document.getElementById('rejectForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const reason = document.getElementById('rejectionReason').value.trim();
+        if (!reason) {
+            alert('Укажите причину отклонения');
+            return;
+        }
+        
+        try {
+            const response = await fetch('/api/photo-control/approve', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    verification_id: currentVerificationId,
+                    action: 'reject',
+                    reason: reason
+                })
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert('Заявка отклонена!');
+                closeRejectModal();
+                loadPendingVerifications();
+            } else {
+                alert('Ошибка при отклонении заявки');
+            }
+        } catch (error) {
+            console.error('Ошибка отклонения:', error);
+            alert('Ошибка при отклонении заявки');
+        }
     });
+
+    // Старые функции (оставляем для совместимости)
+    function filterByStatus(status) {
+        console.log('Фильтрация по статусу:', status);
+        // В новой версии фильтрация происходит автоматически через API
+    }
 </script>
 {% endblock %}

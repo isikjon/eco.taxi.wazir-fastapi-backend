@@ -19,14 +19,26 @@
                 <button style="padding: 0px;"><img src="/static/dispatcher/img/ico/search.png" alt="search"></button>
             </form>
         </div>
-        <div class="main__subheader-filing">
-            <form action="#">
-                <select name="filing-date">
-                    <option value="Состояние" disabled selected>Состояние</option>
-                    <option value="Занят">Свободен</option>
-                    <option value="В ожидании">Занят</option>
+        <div class="main__subheader-filing" style="display: flex; gap: 10px;">
+            <form method="GET" action="/disp/drivers">
+                <select name="status" onchange="this.form.submit()">
+                    <option value="all" {% if filters.status == "all" %}selected{% endif %}>Все статусы</option>
+                    <option value="active" {% if filters.status == "active" %}selected{% endif %}>Активные</option>
+                    <option value="inactive" {% if filters.status == "inactive" %}selected{% endif %}>Неактивные</option>
                 </select>
             </form>
+            <form method="GET" action="/disp/drivers">
+                <input type="hidden" name="status" value="{{ filters.status }}">
+                <select name="tariff" onchange="this.form.submit()">
+                    <option value="" {% if not filters.tariff %}selected{% endif %}>Все тарифы</option>
+                    {% for tariff_option in filter_options.tariffs %}
+                    <option value="{{ tariff_option }}" {% if filters.tariff == tariff_option %}selected{% endif %}>{{ tariff_option }}</option>
+                    {% endfor %}
+                </select>
+            </form>
+            {% if has_filters %}
+            <a href="/disp/drivers" class="main__btn-short">Сбросить</a>
+            {% endif %}
         </div>
     </div>
     <div class="main__subheader-drivers">
@@ -61,9 +73,9 @@
                                 {% if driver.is_active %}Свободен{% else %}Занят{% endif %}
                             </span>
                         </td>
-                        <td>Позывной</td>
+                        <td>{{ driver.call_sign if driver.call_sign else "Не указан" }}</td>
                         <td>{{ driver.first_name }} {{ driver.last_name }}</td>
-                        <td>{{ driver.phone }}</td>
+                        <td>{{ driver.phone_number }}</td>
                         <td>{{ "%.0f"|format(driver.balance) if driver.balance else "0" }}</td>
                         <td>{{ driver.car_number }}</td>
                     </tr>

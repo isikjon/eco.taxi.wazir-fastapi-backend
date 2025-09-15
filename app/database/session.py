@@ -9,7 +9,12 @@ SQLALCHEMY_DATABASE_URL = "sqlite:///./taxi_admin.db"
 
 engine = create_engine(
     SQLALCHEMY_DATABASE_URL,
-    connect_args={"check_same_thread": False}
+    connect_args={"check_same_thread": False},
+    pool_size=20,
+    max_overflow=30,
+    pool_timeout=60,
+    pool_recycle=3600,
+    pool_pre_ping=True
 )
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 

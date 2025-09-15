@@ -38,86 +38,200 @@ async def dispatch_analytics(request: Request):
     return HTMLResponse(content="<h1>Аналитика диспетчерской</h1><p>Страница в разработке</p>")
 
 @router.get("/drivers", response_class=HTMLResponse)
-async def dispatch_drivers(request: Request, db: Session = Depends(get_db), page: int = 1, per_page: int = 10):
-    dispatcher = getattr(request.state, 'dispatcher', None)
-    taxipark_id = getattr(request.state, 'taxipark_id', None)
-    
-    if not dispatcher:
-        return RedirectResponse(url='/disp/auth/login', status_code=302)
-    
-    from app.models.driver import Driver
-    from app.services.dispatcher_service import DispatcherService
-    from sqlalchemy import func
-    
-    # Получаем общее количество водителей
-    total_drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).count()
-    
-    # Вычисляем пагинацию
-    total_pages = (total_drivers + per_page - 1) // per_page
-    offset = (page - 1) * per_page
-    
-    # Получаем водителей для текущей страницы
-    drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).offset(offset).limit(per_page).all()
-    
-    # Получаем статистику
-    stats = DispatcherService.get_dispatcher_stats(db, taxipark_id)
-    
-    # Подсчитываем статистику водителей
-    active_drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id, Driver.is_active == True).count()
-    
-    return templates.TemplateResponse("dispatcher/drivers.html", {
-        "request": request,
-        "dispatcher": dispatcher,
-        "taxipark_id": taxipark_id,
-        "drivers": drivers,
-        "total_drivers": total_drivers,
-        "active_drivers": active_drivers,
-        "balance": stats["balance"],
-        "current_page": page,
-        "total_pages": total_pages,
-        "per_page": per_page
-    })
+async def dispatch_drivers(
+    request: Request, 
+    db: Session = Depends(get_db), 
+    page: int = 1, 
+    per_page: int = 10,
+    status: str = "all",
+    tariff: str = ""
+):
+    try:
+        dispatcher = getattr(request.state, 'dispatcher', None)
+        taxipark_id = getattr(request.state, 'taxipark_id', None)
+        
+        if not dispatcher:
+            return RedirectResponse(url='/disp/auth/login', status_code=302)
+        
+        from app.models.driver import Driver
+        from app.services.dispatcher_service import DispatcherService
+        from sqlalchemy import func
+        
+        # Базовый запрос для данного таксопарка
+        query = db.query(Driver).filter(Driver.taxipark_id == taxipark_id)
+        
+        # Применяем фильтры
+        if status == "active":
+            query = query.filter(Driver.is_active == True)
+        elif status == "inactive":
+            query = query.filter(Driver.is_active == False)
+        
+        if tariff:
+            query = query.filter(Driver.tariff == tariff)
+        
+        # Получаем общее количество водителей после фильтрации
+        total_drivers = query.count()
+        
+        # Вычисляем пагинацию
+        total_pages = (total_drivers + per_page - 1) // per_page
+        offset = (page - 1) * per_page
+        
+        # Получаем водителей для текущей страницы
+        drivers = query.offset(offset).limit(per_page).all()
+        
+        # Получаем статистику
+        stats = DispatcherService.get_dispatcher_stats(db, taxipark_id)
+        
+        # Подсчитываем статистику водителей
+        active_drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id, Driver.is_active == True).count()
+        
+        # Получаем уникальные тарифы для фильтра
+        all_drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).all()
+        tariffs = set()
+        for driver in all_drivers:
+            if driver.tariff:
+                tariffs.add(driver.tariff)
+        
+        # Проверяем, есть ли активные фильтры
+        has_filters = any([status != "all", tariff])
+        
+        return templates.TemplateResponse("dispatcher/drivers.html", {
+            "request": request,
+            "dispatcher": dispatcher,
+            "taxipark_id": taxipark_id,
+            "drivers": drivers,
+            "total_drivers": total_drivers,
+            "active_drivers": active_drivers,
+            "balance": stats["balance"],
+            "current_page": page,
+            "total_pages": total_pages,
+            "per_page": per_page,
+            "filters": {
+                "status": status,
+                "tariff": tariff
+            },
+            "filter_options": {
+                "tariffs": sorted(tariffs)
+            },
+            "has_filters": has_filters
+        })
+    except Exception as e:
+        print(f"Error in dispatch_drivers: {e}")
+        return HTMLResponse(content=f"<h1>Ошибка</h1><p>Произошла ошибка при загрузке водителей: {str(e)}</p>", status_code=500)
 
 @router.get("/cars", response_class=HTMLResponse)
-async def dispatch_cars(request: Request, db: Session = Depends(get_db), page: int = 1, per_page: int = 10):
-    dispatcher = getattr(request.state, 'dispatcher', None)
-    taxipark_id = getattr(request.state, 'taxipark_id', None)
-    
-    if not dispatcher:
-        return RedirectResponse(url='/disp/auth/login', status_code=302)
-    
-    from app.models.driver import Driver
-    from app.services.dispatcher_service import DispatcherService
-    from sqlalchemy import func
-    
-    # Получаем автомобили (через водителей) для данного таксопарка
-    total_cars = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).count()
-    
-    # Вычисляем пагинацию
-    total_pages = (total_cars + per_page - 1) // per_page
-    offset = (page - 1) * per_page
-    
-    # Получаем автомобили для текущей страницы
-    cars = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).offset(offset).limit(per_page).all()
-    
-    # Получаем статистику
-    stats = DispatcherService.get_dispatcher_stats(db, taxipark_id)
-    
-    # Подсчитываем статистику автомобилей
-    active_cars = db.query(Driver).filter(Driver.taxipark_id == taxipark_id, Driver.is_active == True).count()
-    
-    return templates.TemplateResponse("dispatcher/cars.html", {
-        "request": request,
-        "dispatcher": dispatcher,
-        "taxipark_id": taxipark_id,
-        "cars": cars,
-        "total_cars": total_cars,
-        "active_cars": active_cars,
-        "balance": stats["balance"],
-        "current_page": page,
-        "total_pages": total_pages,
-        "per_page": per_page
-    })
+async def dispatch_cars(
+    request: Request, 
+    db: Session = Depends(get_db), 
+    page: int = 1, 
+    per_page: int = 10,
+    status: str = "all",
+    brand: str = "",
+    model: str = "",
+    color: str = "",
+    year: str = ""
+):
+    try:
+        dispatcher = getattr(request.state, 'dispatcher', None)
+        taxipark_id = getattr(request.state, 'taxipark_id', None)
+        
+        if not dispatcher:
+            return RedirectResponse(url='/disp/auth/login', status_code=302)
+        
+        from app.models.driver import Driver
+        from app.services.dispatcher_service import DispatcherService
+        from sqlalchemy import func, or_
+        
+        # Базовый запрос для данного таксопарка
+        query = db.query(Driver).filter(Driver.taxipark_id == taxipark_id)
+        
+        # Применяем фильтры
+        if status == "active":
+            query = query.filter(Driver.is_active == True)
+        elif status == "inactive":
+            query = query.filter(Driver.is_active == False)
+        
+        if brand:
+            query = query.filter(Driver.car_model.contains(brand))
+        
+        if model:
+            query = query.filter(Driver.car_model.contains(model))
+        
+        if color:
+            query = query.filter(Driver.car_color.contains(color))
+        
+        if year:
+            query = query.filter(Driver.car_year.contains(year))
+        
+        # Получаем общее количество после фильтрации
+        total_cars = query.count()
+        
+        # Вычисляем пагинацию
+        total_pages = (total_cars + per_page - 1) // per_page
+        offset = (page - 1) * per_page
+        
+        # Получаем автомобили для текущей страницы
+        cars = query.offset(offset).limit(per_page).all()
+        
+        # Получаем статистику
+        stats = DispatcherService.get_dispatcher_stats(db, taxipark_id)
+        
+        # Подсчитываем статистику автомобилей
+        active_cars = db.query(Driver).filter(Driver.taxipark_id == taxipark_id, Driver.is_active == True).count()
+        
+        # Получаем уникальные значения для фильтров
+        all_cars = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).all()
+        
+        # Извлекаем уникальные марки и модели
+        brands = set()
+        models = set()
+        colors = set()
+        years = set()
+        
+        for car in all_cars:
+            if car.car_model:
+                parts = car.car_model.split(' ', 1)
+                if len(parts) > 0:
+                    brands.add(parts[0])
+                if len(parts) > 1:
+                    models.add(parts[1])
+            if car.car_color:
+                colors.add(car.car_color)
+            if car.car_year:
+                years.add(car.car_year)
+        
+        # Проверяем, есть ли активные фильтры
+        has_filters = any([status != "all", brand, model, color, year])
+        
+        return templates.TemplateResponse("dispatcher/cars.html", {
+            "request": request,
+            "dispatcher": dispatcher,
+            "taxipark_id": taxipark_id,
+            "cars": cars,
+            "total_cars": total_cars,
+            "active_cars": active_cars,
+            "balance": stats["balance"],
+            "current_page": page,
+            "total_pages": total_pages,
+            "per_page": per_page,
+            "filters": {
+                "status": status,
+                "brand": brand,
+                "model": model,
+                "color": color,
+                "year": year
+            },
+            "filter_options": {
+                "brands": sorted(brands),
+                "models": sorted(models),
+                "colors": sorted(colors),
+                "years": sorted(years)
+            },
+            "has_filters": has_filters
+        })
+    except Exception as e:
+        print(f"Error in dispatch_cars: {e}")
+        return HTMLResponse(content=f"<h1>Ошибка</h1><p>Произошла ошибка при загрузке автомобилей: {str(e)}</p>", status_code=500)
 
 @router.get("/new-order", response_class=HTMLResponse)
 async def dispatch_new_order(request: Request, db: Session = Depends(get_db)):
@@ -180,45 +294,86 @@ async def dispatch_balance_request(request: Request):
     return HTMLResponse(content="<h1>Запрос на баланс</h1><p>Страница в разработке</p>")
 
 @router.get("/balance-topup", response_class=HTMLResponse)
-async def dispatch_balance_topup(request: Request, db: Session = Depends(get_db), page: int = 1, per_page: int = 10):
-    dispatcher = getattr(request.state, 'dispatcher', None)
-    taxipark_id = getattr(request.state, 'taxipark_id', None)
-    
-    if not dispatcher:
-        return RedirectResponse(url='/disp/auth/login', status_code=302)
-    
-    from app.models.driver import Driver
-    from app.services.dispatcher_service import DispatcherService
-    
-    # Получаем водителей для пополнения баланса
-    total_drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).count()
-    
-    # Вычисляем пагинацию
-    total_pages = (total_drivers + per_page - 1) // per_page
-    offset = (page - 1) * per_page
-    
-    # Получаем водителей для текущей страницы
-    drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).offset(offset).limit(per_page).all()
-    
-    # Получаем статистику
-    stats = DispatcherService.get_dispatcher_stats(db, taxipark_id)
-    
-    # Получаем информацию о таксопарке
-    from app.models.taxipark import TaxiPark
-    taxipark = db.query(TaxiPark).filter(TaxiPark.id == taxipark_id).first()
-    
-    return templates.TemplateResponse("dispatcher/pay_balance.html", {
-        "request": request,
-        "dispatcher": dispatcher,
-        "taxipark_id": taxipark_id,
-        "taxipark": taxipark,
-        "drivers": drivers,
-        "total_drivers": total_drivers,
-        "balance": stats["balance"],
-        "current_page": page,
-        "total_pages": total_pages,
-        "per_page": per_page
-    })
+async def dispatch_balance_topup(
+    request: Request, 
+    db: Session = Depends(get_db), 
+    page: int = 1, 
+    per_page: int = 10,
+    status: str = "all",
+    tariff: str = ""
+):
+    try:
+        dispatcher = getattr(request.state, 'dispatcher', None)
+        taxipark_id = getattr(request.state, 'taxipark_id', None)
+        
+        if not dispatcher:
+            return RedirectResponse(url='/disp/auth/login', status_code=302)
+        
+        from app.models.driver import Driver
+        from app.services.dispatcher_service import DispatcherService
+        
+        # Базовый запрос для данного таксопарка
+        query = db.query(Driver).filter(Driver.taxipark_id == taxipark_id)
+        
+        # Применяем фильтры
+        if status == "active":
+            query = query.filter(Driver.is_active == True)
+        elif status == "inactive":
+            query = query.filter(Driver.is_active == False)
+        
+        if tariff:
+            query = query.filter(Driver.tariff == tariff)
+        
+        # Получаем общее количество водителей после фильтрации
+        total_drivers = query.count()
+        
+        # Вычисляем пагинацию
+        total_pages = (total_drivers + per_page - 1) // per_page
+        offset = (page - 1) * per_page
+        
+        # Получаем водителей для текущей страницы
+        drivers = query.offset(offset).limit(per_page).all()
+        
+        # Получаем статистику
+        stats = DispatcherService.get_dispatcher_stats(db, taxipark_id)
+        
+        # Получаем информацию о таксопарке
+        from app.models.taxipark import TaxiPark
+        taxipark = db.query(TaxiPark).filter(TaxiPark.id == taxipark_id).first()
+        
+        # Получаем уникальные тарифы для фильтра
+        all_drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).all()
+        tariffs = set()
+        for driver in all_drivers:
+            if driver.tariff:
+                tariffs.add(driver.tariff)
+        
+        # Проверяем, есть ли активные фильтры
+        has_filters = any([status != "all", tariff])
+        
+        return templates.TemplateResponse("dispatcher/pay_balance.html", {
+            "request": request,
+            "dispatcher": dispatcher,
+            "taxipark_id": taxipark_id,
+            "taxipark": taxipark,
+            "drivers": drivers,
+            "total_drivers": total_drivers,
+            "balance": stats["balance"],
+            "current_page": page,
+            "total_pages": total_pages,
+            "per_page": per_page,
+            "filters": {
+                "status": status,
+                "tariff": tariff
+            },
+            "filter_options": {
+                "tariffs": sorted(tariffs)
+            },
+            "has_filters": has_filters
+        })
+    except Exception as e:
+        print(f"Error in dispatch_balance_topup: {e}")
+        return HTMLResponse(content=f"<h1>Ошибка</h1><p>Произошла ошибка при загрузке страницы пополнения баланса: {str(e)}</p>", status_code=500)
 
 @router.get("/driver-create", response_class=HTMLResponse)
 async def dispatch_driver_create(request: Request):

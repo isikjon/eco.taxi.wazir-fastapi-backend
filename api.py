@@ -108,6 +108,29 @@ def create_database():
     conn.close()
     print("SMS database created successfully!")
 
+# Функция нормализации номера телефона
+def normalize_phone_number(phone_number):
+    """Нормализует номер телефона к единому формату +996XXXXXXXXX для поиска в БД"""
+    if not phone_number:
+        return None
+    
+    # Извлекаем только цифры из номера
+    digits_only = ''.join(filter(str.isdigit, phone_number))
+    
+    # Если номер начинается с 996, добавляем +
+    if digits_only.startswith('996'):
+        return f"+{digits_only}"
+    
+    # Если номер начинается с 9 (без 996), добавляем +996
+    if digits_only.startswith('9') and len(digits_only) == 9:
+        return f"+996{digits_only}"
+    
+    # Если номер уже содержит 996 в начале, просто добавляем +
+    if len(digits_only) >= 12 and digits_only.startswith('996'):
+        return f"+{digits_only}"
+    
+    return phone_number
+
 # API endpoints
 
 @app.get("/")
@@ -201,8 +224,13 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
         conn.commit()
         conn.close()
         
+        # Нормализуем номер телефона для поиска в БД
+        normalized_phone = normalize_phone_number(request.phoneNumber)
+        print(f"🔑 Original phone: {request.phoneNumber}")
+        print(f"🔑 Normalized phone: {normalized_phone}")
+        
         # Проверяем, существует ли водитель в SQLAlchemy БД
-        driver = db.query(Driver).filter(Driver.phone_number == request.phoneNumber).first()
+        driver = db.query(Driver).filter(Driver.phone_number == normalized_phone).first()
         
         if driver:
             # Существующий водитель
@@ -221,6 +249,13 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
                 "fullName": f"{driver.first_name} {driver.last_name}",
                 "carModel": driver.car_model or "Не указана",
                 "carNumber": driver.car_number or "Не указан",
+                "carBrand": driver.car_model.split(' ')[0] if driver.car_model else "",
+                "carColor": driver.car_color or "",
+                "carYear": driver.car_year or "",
+                "carVin": driver.car_vin or "",
+                "carBodyNumber": driver.car_body_number or "",
+                "carSts": driver.car_sts or "",
+                "taxiparkId": driver.taxipark_id,
                 "taxiparkName": taxipark_name,
                 "balance": float(driver.balance or 0),
                 "status": "active" if driver.is_active else "inactive",
@@ -259,8 +294,11 @@ async def register_driver(registration: DriverRegistration, db: SessionLocal = D
         car_data = registration.car
         park_data = registration.park
         
+        # Нормализуем номер телефона
+        normalized_phone = normalize_phone_number(user_data.get('phoneNumber', ''))
+        
         # Проверяем, не существует ли уже водитель с таким номером
-        existing_driver = db.query(Driver).filter(Driver.phone_number == user_data.get('phoneNumber', '')).first()
+        existing_driver = db.query(Driver).filter(Driver.phone_number == normalized_phone).first()
         if existing_driver:
             raise HTTPException(status_code=400, detail="Водитель с таким номером уже зарегистрирован")
         
@@ -277,11 +315,18 @@ async def register_driver(registration: DriverRegistration, db: SessionLocal = D
         
         # Регистрируем нового водителя
         new_driver = Driver(
-            phone_number=user_data.get('phoneNumber', ''),
+            phone_number=normalized_phone,
             first_name=first_name,
             last_name=last_name,
             car_model=f"{car_data.get('brand', '')} {car_data.get('model', '')}".strip(),
             car_number=car_data.get('licensePlate', ''),
+            car_color=car_data.get('color', ''),
+            car_year=car_data.get('year', ''),
+            car_vin=car_data.get('vin', ''),
+            car_body_number=car_data.get('bodyNumber', ''),
+            car_sts=car_data.get('sts', ''),
+            call_sign=user_data.get('callSign', ''),
+            tariff=user_data.get('tariff', 'Эконом'),
             taxipark_id=park_data.get('id'),
             is_active=True
         )
@@ -313,8 +358,11 @@ async def check_driver_status(phoneNumber: str, db: SessionLocal = Depends(get_d
     try:
         from app.models.driver import Driver
         
+        # Нормализуем номер телефона
+        normalized_phone = normalize_phone_number(phoneNumber)
         print(f"Checking status for phone: {phoneNumber}")
-        driver = db.query(Driver).filter(Driver.phone_number == phoneNumber).first()
+        print(f"Normalized phone: {normalized_phone}")
+        driver = db.query(Driver).filter(Driver.phone_number == normalized_phone).first()
         print(f"Found driver: {driver}")
         
         if driver:

@@ -15,12 +15,27 @@
 
 {% block subheader %}
 <div class="main__subheader main__subheader-paybalance">
-    <!-- <div class="main__subheader-add">
-        <button>Активные</button>
-        <button>Заблокированные</button>
-        <button>В ожидании</button>
-        <button>Отмененные</button>
-    </div> -->
+    <div class="main__subheader-filing" style="display: flex; gap: 10px;">
+        <form method="GET" action="/disp/balance-topup">
+            <select name="status" onchange="this.form.submit()">
+                <option value="all" {% if filters.status == "all" %}selected{% endif %}>Все статусы</option>
+                <option value="active" {% if filters.status == "active" %}selected{% endif %}>Активные</option>
+                <option value="inactive" {% if filters.status == "inactive" %}selected{% endif %}>Неактивные</option>
+            </select>
+        </form>
+        <form method="GET" action="/disp/balance-topup">
+            <input type="hidden" name="status" value="{{ filters.status }}">
+            <select name="tariff" onchange="this.form.submit()">
+                <option value="" {% if not filters.tariff %}selected{% endif %}>Все тарифы</option>
+                {% for tariff_option in filter_options.tariffs %}
+                <option value="{{ tariff_option }}" {% if filters.tariff == tariff_option %}selected{% endif %}>{{ tariff_option }}</option>
+                {% endfor %}
+            </select>
+        </form>
+        {% if has_filters %}
+        <a href="/disp/balance-topup" class="main__btn-short">Сбросить</a>
+        {% endif %}
+    </div>
     <div class="main__subheader-balance">
         <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
         <p>Баланс: {{ "%.0f"|format(balance) if balance else "0" }}</p>
@@ -50,11 +65,11 @@
                     {% for driver in drivers %}
                     <tr>
                         <td>{{ driver.first_name }} {{ driver.last_name }}</td>
-                        <td>Позывной</td>
-                        <td><a href="tel:{{ driver.phone }}">{{ driver.phone if driver.phone else 'Не указан' }}</a></td>
+                        <td>{{ driver.call_sign if driver.call_sign else "Не указан" }}</td>
+                        <td><a href="tel:{{ driver.phone_number }}">{{ driver.phone_number if driver.phone_number else 'Не указан' }}</a></td>
                         <td>{{ driver.car_model.split(' ')[0] if driver.car_model else 'Не указано' }}</td>
                         <td>{{ driver.car_model.split(' ')[1] if driver.car_model and ' ' in driver.car_model else driver.car_model if driver.car_model else 'Не указано' }}</td>
-                        <td>Эконом</td>
+                        <td>{{ driver.tariff if driver.tariff else 'Эконом' }}</td>
                         <td>{{ "%.0f"|format(driver.balance) if driver.balance else "0" }}</td>
                         <td>
                             <form class="main__paybalance-table-td">
