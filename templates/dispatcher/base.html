@@ -33,7 +33,7 @@
                 <nav>
                     <ul>
                         <li><a href="/disp/analytics">Статистика</a></li>
-                        <li><a href="/disp/balance-request">Запрос на баланс</a></li>
+                        <li><a href="#" style="opacity: .5;">Запрос на баланс</a></li>
                         <li><a href="/disp/new-order">Новый заказ</a></li>
                     </ul>
                 </nav>
@@ -42,11 +42,11 @@
                 <h4>Автопарк</h4>
                 <nav>
                     <ul>
-                        <li><a href="/disp/driver-create">Создание водителя</a></li>
+                        <li><a href="#" style="opacity: .5;">Создание водителя</a></li>
                         <li><a href="/disp/balance-topup">Пополнение баланса</a></li>
                         <li><a href="/disp/drivers">Водители</a></li>
                         <li><a href="/disp/cars">Автомобили</a></li>
-                        <li><a href="/disp/chat">Чат</a></li>
+                        <li><a href="#" style="opacity: .5;">Чат</a></li>
                     </ul>
                 </nav>
             </div>
@@ -124,7 +124,7 @@
                         <li><a href="/disp/drivers">Водитель</a></li>
                         <li><a href="/disp/cars">Автомобиль</a></li>
                         <li><a href="/disp/photo-control">Фото контроль</a></li>
-                        <li>Тариф</li>
+                        <li><a href="/disp/balance-topup">Пополнение</a></li>
                     </ul>
                 </div>
                 <div class="main__header-search">
@@ -149,19 +149,24 @@
                     </form>
                 </div>
                 <div class="main__subheader-add">
-                    <button><a href="/disp/new-order">+ Новый (F2)</a></button>
-                    <button>
-                        <span class="free"></span>
-                        Выполненные
-                    </button>
-                    <button>
-                        <span class="busy"></span>
-                        Отмененые
-                    </button>
-                    <button>
-                        <span class="cancelled"></span>
-                        Выполняющиеся
-                    </button>
+                    <button><a href="/disp/new-order" title="Нажмите F2 для быстрого перехода">+ Новый (F2)</a></button>
+                    {% if statuses %}
+                        {% for status, count in statuses %}
+                        <button onclick="filterByStatus('{{ status }}')" class="{% if current_status == status %}active{% endif %}">
+                            <span class="status-dot status-{{ status }}"></span>
+                            {% if status == 'received' %}Получен
+                            {% elif status == 'accepted' %}Принят
+                            {% elif status == 'navigating_to_a' %}Едет к точке А
+                            {% elif status == 'arrived_at_a' %}Прибыл в точку А
+                            {% elif status == 'navigating_to_b' %}Едет к точке Б
+                            {% elif status == 'completed' %}Выполнен
+                            {% elif status == 'cancelled' %}Отменен
+                            {% elif status == 'in_progress' %}Выполняется
+                            {% else %}{{ status }}{% endif %}
+                            ({{ count }})
+                        </button>
+                        {% endfor %}
+                    {% endif %}
                 </div>
                 <div class="main__subheader-balance">
                     <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
@@ -190,7 +195,58 @@
             
             window.location.href = '/disp/auth/login';
         }
+        
+        function filterByStatus(status) {
+            let url = '?page=1&per_page=20';
+            if (status && status !== 'all') {
+                url += '&status=' + status;
+            }
+            window.location.href = url;
+        }
+        
+        // Глобальная функция для перехода на страницу создания заказа по F2
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'F2') {
+                // Проверяем, не находится ли пользователь в поле ввода
+                const activeElement = document.activeElement;
+                const isInputField = activeElement && (
+                    activeElement.tagName === 'INPUT' || 
+                    activeElement.tagName === 'TEXTAREA' || 
+                    activeElement.tagName === 'SELECT' ||
+                    activeElement.contentEditable === 'true'
+                );
+                
+                // Если не в поле ввода, переходим на страницу создания заказа
+                if (!isInputField) {
+                    event.preventDefault(); // Предотвращаем стандартное поведение F2
+                    window.location.href = '/disp/new-order';
+                }
+            }
+        });
     </script>
+    
+    <style>
+        .status-dot {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+        .status-received { background-color: #28a745; }
+        .status-accepted { background-color: #17a2b8; }
+        .status-navigating_to_a { background-color: #ffc107; }
+        .status-arrived_at_a { background-color: #fd7e14; }
+        .status-navigating_to_b { background-color: #6f42c1; }
+        .status-completed { background-color: #28a745; }
+        .status-cancelled { background-color: #dc3545; }
+        .status-in_progress { background-color: #ffc107; }
+        .main__subheader-add button.active {
+            background-color: #007bff;
+            border-color: #007bff;
+        }
+    </style>
+    
     {% block extra_scripts %}{% endblock %}
 </body>
 </html>

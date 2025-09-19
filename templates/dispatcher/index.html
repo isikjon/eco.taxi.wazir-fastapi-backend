@@ -5,6 +5,28 @@
 {% block nav_disp_active %}navbar__links-content-active{% endblock %}
 
 {% block content %}
+<style>
+    .main__table thead tr th {
+        font-size: 13px;
+    }
+    .main__table tbody td {
+        font-size: 12px;
+    }
+    .pagination-info {
+        color: #888;
+        font-size: 14px;
+        margin-bottom: 10px;
+    }
+    .main__table-pagination a {
+        text-decoration: none;
+        color: inherit;
+    }
+    .main__table-pagination button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+</style>
+
 <div class="main__table">
     <table>
         <thead>
@@ -17,6 +39,7 @@
                 <th>Откуда</th>
                 <th>Куда</th>
                 <th>Водитель</th>
+                <th>Телефон водителя</th>
                 <th>Сумма</th>
                 <th>Тариф</th>
             </tr>
@@ -25,11 +48,16 @@
             {% if orders %}
                 {% for order in orders %}
                 <tr>
-                    <td>{{ order.id }}</td>
+                    <td>{{ order.order_number if order.order_number else order.id }}</td>
                     <td>{{ order.created_at.strftime('%d.%m.%y') if order.created_at else '--' }}</td>
                     <td>{{ order.created_at.strftime('%H:%M') if order.created_at else '--' }}</td>
                     <td class="{% if order.status == 'completed' %}status-free{% elif order.status == 'cancelled' %}status-busy{% else %}status-free{% endif %}">
-                        {% if order.status == 'completed' %}Выполнен
+                        {% if order.status == 'received' %}Получен
+                        {% elif order.status == 'accepted' %}Принят
+                        {% elif order.status == 'navigating_to_a' %}Едет к точке А
+                        {% elif order.status == 'arrived_at_a' %}Прибыл в точку А
+                        {% elif order.status == 'navigating_to_b' %}Едет к точке Б
+                        {% elif order.status == 'completed' %}Выполнен
                         {% elif order.status == 'cancelled' %}Отменен
                         {% elif order.status == 'in_progress' %}Выполняется
                         {% else %}{{ order.status }}{% endif %}
@@ -37,7 +65,8 @@
                     <td>{{ order.client_phone if order.client_phone else '--' }}</td>
                     <td>{{ order.pickup_address if order.pickup_address else '--' }}</td>
                     <td>{{ order.destination_address if order.destination_address else '--' }}</td>
-                    <td>Позывной</td>
+                    <td>{{ order.driver.call_sign if order.driver and order.driver.call_sign else (order.driver.first_name + ' ' + order.driver.last_name if order.driver else 'Не назначен') }}</td>
+                    <td>{{ order.driver.phone_number if order.driver else '--' }}</td>
                     <td>{{ order.price if order.price else '150' }}</td>
                     <td>Комфорт</td>
                 </tr>
@@ -56,22 +85,96 @@
             <button>Водители: {{ drivers_count if drivers_count else "0" }}</button>
         </div>
         <div class="main__table-pagination">
+            <!-- Предыдущая страница -->
+            {% if current_page > 1 %}
             <div class="main__table-pagination-prev">
-                <button><img src="/static/dispatcher/img/ico/prev.png" alt="prev"></button>
+                <a href="?page={{ current_page - 1 }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}">
+                    <button><img src="/static/dispatcher/img/ico/prev.png" alt="prev"></button>
+                </a>
             </div>
-            <div class="main__table-pagination-active main__table-pagination-item">
-                <button>1</button>
+            {% else %}
+            <div class="main__table-pagination-prev">
+                <button disabled><img src="/static/dispatcher/img/ico/prev.png" alt="prev"></button>
             </div>
+            {% endif %}
+            
+            <!-- Номера страниц -->
+            {% set start_page = [1, current_page - 2]|max %}
+            {% set end_page = [total_pages, current_page + 2]|min %}
+            
+            {% if start_page > 1 %}
             <div class="main__table-pagination-item">
-                <button>2</button>
+                <a href="?page=1&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}">
+                    <button>1</button>
+                </a>
             </div>
+            {% if start_page > 2 %}
             <div class="main__table-pagination-item">
-                <button>3</button>
+                <button disabled>...</button>
             </div>
+            {% endif %}
+            {% endif %}
+            
+            {% for page_num in range(start_page, end_page + 1) %}
+            <div class="main__table-pagination-item {% if page_num == current_page %}main__table-pagination-active{% endif %}">
+                <a href="?page={{ page_num }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}">
+                    <button>{{ page_num }}</button>
+                </a>
+            </div>
+            {% endfor %}
+            
+            {% if end_page < total_pages %}
+            {% if end_page < total_pages - 1 %}
+            <div class="main__table-pagination-item">
+                <button disabled>...</button>
+            </div>
+            {% endif %}
+            <div class="main__table-pagination-item">
+                <a href="?page={{ total_pages }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}">
+                    <button>{{ total_pages }}</button>
+                </a>
+            </div>
+            {% endif %}
+            
+            <!-- Следующая страница -->
+            {% if current_page < total_pages %}
             <div class="main__table-pagination-next">
-                <button><img src="/static/dispatcher/img/ico/next.png" alt="next"></button>
+                <a href="?page={{ current_page + 1 }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}">
+                    <button><img src="/static/dispatcher/img/ico/next.png" alt="next"></button>
+                </a>
+            </div>
+            {% else %}
+            <div class="main__table-pagination-next">
+                <button disabled><img src="/static/dispatcher/img/ico/next.png" alt="next"></button>
+            </div>
+            {% endif %}
+        </div>
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <label style="color: white; font-size: 14px;">На странице:</label>
+                <select onchange="updateFilters()" id="per-page-filter" style="padding: 5px 10px; background-color: #47484c; border: 1px solid #666; border-radius: 4px; color: white; font-size: 14px;">
+                    <option value="10" {% if per_page == 10 %}selected{% endif %}>10</option>
+                    <option value="20" {% if per_page == 20 %}selected{% endif %}>20</option>
+                    <option value="50" {% if per_page == 50 %}selected{% endif %}>50</option>
+                    <option value="100" {% if per_page == 100 %}selected{% endif %}>100</option>
+                </select>
             </div>
         </div>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+function updateFilters() {
+    const perPage = document.getElementById('per-page-filter').value;
+    
+    let url = '?page=1&per_page=' + perPage;
+    {% if current_status %}
+    url += '&status={{ current_status }}';
+    {% endif %}
+    
+    window.location.href = url;
+}
+</script>
 {% endblock %}

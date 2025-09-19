@@ -13,7 +13,13 @@ templates = Jinja2Templates(directory="templates")
 router.include_router(dispatcher_auth_router)
 
 @router.get("/", response_class=HTMLResponse)
-async def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
+async def dispatch_dashboard(
+    request: Request, 
+    db: Session = Depends(get_db),
+    page: int = 1,
+    per_page: int = 20,
+    status: str = None
+):
     dispatcher = getattr(request.state, 'dispatcher', None)
     taxipark_id = getattr(request.state, 'taxipark_id', None)
     
@@ -21,7 +27,34 @@ async def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse(url='/disp/auth/login', status_code=302)
     
     from app.services.dispatcher_service import DispatcherService
+    from app.models.order import Order
+    from sqlalchemy.orm import joinedload
+    from sqlalchemy import func
+    
+    # Получаем статистику
     stats = DispatcherService.get_dispatcher_stats(db, taxipark_id)
+    
+    # Базовый запрос с загрузкой водителей
+    query = db.query(Order).options(joinedload(Order.driver)).filter(Order.taxipark_id == taxipark_id)
+    
+    # Применяем фильтр по статусу если указан
+    if status and status != 'all':
+        query = query.filter(Order.status == status)
+    
+    # Подсчитываем общее количество записей
+    total_orders = query.count()
+    
+    # Вычисляем пагинацию
+    total_pages = (total_orders + per_page - 1) // per_page if total_orders > 0 else 1
+    offset = (page - 1) * per_page
+    
+    # Получаем заказы для текущей страницы
+    orders = query.order_by(Order.created_at.desc()).offset(offset).limit(per_page).all()
+    
+    # Получаем уникальные статусы для статистики
+    statuses = db.query(Order.status, func.count(Order.id)).filter(
+        Order.taxipark_id == taxipark_id
+    ).group_by(Order.status).all()
     
     return templates.TemplateResponse("dispatcher/index.html", {
         "request": request,
@@ -30,12 +63,69 @@ async def dispatch_dashboard(request: Request, db: Session = Depends(get_db)):
         "balance": stats["balance"],
         "drivers_count": stats["drivers_count"],
         "orders_stats": stats["orders_stats"],
-        "orders": stats["orders"]
+        "orders": orders,
+        "current_page": page,
+        "total_pages": total_pages,
+        "total_orders": total_orders,
+        "per_page": per_page,
+        "current_status": status,
+        "statuses": statuses
     })
 
 @router.get("/analytics", response_class=HTMLResponse)
-async def dispatch_analytics(request: Request):
-    return HTMLResponse(content="<h1>Аналитика диспетчерской</h1><p>Страница в разработке</p>")
+async def dispatch_analytics(request: Request, db: Session = Depends(get_db)):
+    dispatcher = getattr(request.state, 'dispatcher', None)
+    taxipark_id = getattr(request.state, 'taxipark_id', None)
+    
+    if not dispatcher:
+        return RedirectResponse(url='/disp/auth/login', status_code=302)
+    
+    from app.services.dispatcher_service import DispatcherService
+    from app.models.order import Order
+    from app.models.driver import Driver
+    from app.models.transaction import DriverTransaction
+    from sqlalchemy import func
+    
+    # Получаем статистику
+    stats = DispatcherService.get_dispatcher_stats(db, taxipark_id)
+    
+    # Подсчитываем заказы по статусам
+    orders_by_status = db.query(Order.status, func.count(Order.id)).filter(
+        Order.taxipark_id == taxipark_id
+    ).group_by(Order.status).all()
+    orders_by_status_dict = dict(orders_by_status)
+    
+    # Подсчитываем заказы по тарифам
+    tariffs_data = db.query(Order.tariff, func.count(Order.id)).filter(
+        Order.taxipark_id == taxipark_id,
+        Order.tariff.isnot(None)
+    ).group_by(Order.tariff).all()
+    tariffs_dict = dict(tariffs_data)
+    
+    # Подсчитываем активных водителей
+    active_drivers = db.query(Driver).filter(
+        Driver.taxipark_id == taxipark_id,
+        Driver.is_active == True
+    ).count()
+    
+    # Подсчитываем пополнения баланса
+    total_topups = db.query(DriverTransaction).join(Driver).filter(
+        Driver.taxipark_id == taxipark_id,
+        DriverTransaction.type == 'topup'
+    ).count()
+    
+    return templates.TemplateResponse("dispatcher/analytics.html", {
+        "request": request,
+        "dispatcher": dispatcher,
+        "taxipark_id": taxipark_id,
+        "balance": stats["balance"],
+        "drivers_count": stats["drivers_count"],
+        "total_orders": sum(orders_by_status_dict.values()) if orders_by_status_dict else 0,
+        "orders_by_status": orders_by_status_dict,
+        "tariffs_data": tariffs_dict,
+        "active_drivers": active_drivers,
+        "total_topups": total_topups
+    })
 
 @router.get("/drivers", response_class=HTMLResponse)
 async def dispatch_drivers(
@@ -254,8 +344,9 @@ async def dispatch_new_order(request: Request, db: Session = Depends(get_db)):
         Driver.is_active == True
     ).all()
     
-    # Получаем последние заказы
-    recent_orders = db.query(Order).filter(
+    # Получаем последние заказы с загруженными водителями
+    from sqlalchemy.orm import joinedload
+    recent_orders = db.query(Order).options(joinedload(Order.driver)).filter(
         Order.taxipark_id == taxipark_id
     ).order_by(Order.created_at.desc()).limit(10).all()
     
@@ -475,13 +566,15 @@ async def get_dashboard_stats(request: Request, db: Session = Depends(get_db)):
         "orders": [
             {
                 "id": order.id,
-                "order_number": order.id,
+                "order_number": order.order_number if order.order_number else order.id,
                 "created_at": order.created_at.isoformat() if order.created_at else None,
                 "status": order.status,
+                "status_display": order.get_status_display(),
                 "phone": order.client_phone,
                 "from_address": order.pickup_address,
                 "to_address": order.destination_address,
-                "driver_name": "Позывной",
+                "driver_name": order.get_driver_display_name(),
+                "driver_phone": order.driver.phone_number if order.driver else None,
                 "amount": order.price,
                 "tariff": "Комфорт"
             }
@@ -580,6 +673,7 @@ async def create_order(request: Request, db: Session = Depends(get_db)):
     try:
         data = await request.json()
         
+        # Обязательные поля
         required_fields = ['driver_id', 'tariff', 'payment_method', 'pickup_address', 'destination_address']
         for field in required_fields:
             if not data.get(field):
@@ -588,7 +682,9 @@ async def create_order(request: Request, db: Session = Depends(get_db)):
         from app.models.driver import Driver
         from app.models.order import Order
         from datetime import datetime
+        import random
         
+        # Проверяем водителя
         driver = db.query(Driver).filter(
             Driver.id == data['driver_id'],
             Driver.taxipark_id == taxipark_id,
@@ -598,28 +694,168 @@ async def create_order(request: Request, db: Session = Depends(get_db)):
         if not driver:
             raise HTTPException(status_code=404, detail="Driver not found or inactive")
         
+        # Генерируем уникальный номер заказа
+        order_number = data.get('order_number')
+        if not order_number:
+            order_number = f"WDD{random.randint(1000000, 9999999)}"
+        
+        # Создаем заказ
         new_order = Order(
-            order_number=data.get('order_number', ''),
+            order_number=order_number,
+            client_name=data.get('client_name', ''),
+            client_phone=data.get('client_phone', ''),
+            pickup_address=data['pickup_address'],
+            pickup_latitude=data.get('pickup_latitude'),
+            pickup_longitude=data.get('pickup_longitude'),
+            destination_address=data['destination_address'],
+            destination_latitude=data.get('destination_latitude'),
+            destination_longitude=data.get('destination_longitude'),
+            price=data.get('price', 0.0),
+            distance=data.get('distance'),
+            duration=data.get('duration'),
+            status='received',  # Новый статус
             driver_id=data['driver_id'],
             taxipark_id=taxipark_id,
-            pickup_address=data['pickup_address'],
-            destination_address=data['destination_address'],
-            status='pending',
-            payment_method=data['payment_method'],
             tariff=data['tariff'],
-            price=0.0, 
+            payment_method=data['payment_method'],
             notes=data.get('notes', ''),
-            client_phone='', 
             created_at=datetime.now()
         )
         
         db.add(new_order)
         db.commit()
+        db.refresh(new_order)
+        
+        # Отправляем заказ водителю через WebSocket
+        from app.websocket.manager import websocket_manager
+        await websocket_manager.broadcast_new_order(
+            new_order.to_dict(), 
+            taxipark_id, 
+            new_order.driver_id
+        )
         
         return {
             "success": True,
             "message": "Order created successfully",
-            "order_id": new_order.id
+            "order": new_order.to_dict()
+        }
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/orders")
+async def get_orders(request: Request, db: Session = Depends(get_db)):
+    """Получить список заказов для диспетчера"""
+    dispatcher = getattr(request.state, 'dispatcher', None)
+    taxipark_id = getattr(request.state, 'taxipark_id', None)
+    
+    if not dispatcher:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        from app.models.order import Order
+        from sqlalchemy import desc
+        
+        orders = db.query(Order).filter(
+            Order.taxipark_id == taxipark_id
+        ).order_by(desc(Order.created_at)).limit(50).all()
+        
+        return {
+            "success": True,
+            "orders": [order.to_dict() for order in orders]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/orders/{order_id}")
+async def get_order(order_id: int, request: Request, db: Session = Depends(get_db)):
+    """Получить конкретный заказ"""
+    dispatcher = getattr(request.state, 'dispatcher', None)
+    taxipark_id = getattr(request.state, 'taxipark_id', None)
+    
+    if not dispatcher:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        from app.models.order import Order
+        
+        order = db.query(Order).filter(
+            Order.id == order_id,
+            Order.taxipark_id == taxipark_id
+        ).first()
+        
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        return {
+            "success": True,
+            "order": order.to_dict()
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.put("/api/orders/{order_id}/status")
+async def update_order_status(order_id: int, request: Request, db: Session = Depends(get_db)):
+    """Обновить статус заказа"""
+    dispatcher = getattr(request.state, 'dispatcher', None)
+    taxipark_id = getattr(request.state, 'taxipark_id', None)
+    
+    if not dispatcher:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        data = await request.json()
+        new_status = data.get('status')
+        
+        if not new_status:
+            raise HTTPException(status_code=400, detail="Status is required")
+        
+        valid_statuses = ['received', 'accepted', 'navigating_to_a', 'arrived_at_a', 'navigating_to_b', 'completed', 'cancelled']
+        if new_status not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+        
+        from app.models.order import Order
+        from datetime import datetime
+        
+        order = db.query(Order).filter(
+            Order.id == order_id,
+            Order.taxipark_id == taxipark_id
+        ).first()
+        
+        if not order:
+            raise HTTPException(status_code=404, detail="Order not found")
+        
+        # Обновляем статус и соответствующие временные метки
+        order.status = new_status
+        now = datetime.now()
+        
+        if new_status == 'accepted':
+            order.accepted_at = now
+        elif new_status == 'arrived_at_a':
+            order.arrived_at_a = now
+        elif new_status == 'navigating_to_b':
+            order.started_to_b = now
+        elif new_status == 'completed':
+            order.completed_at = now
+        elif new_status == 'cancelled':
+            order.cancelled_at = now
+        
+        db.commit()
+        
+        # Отправляем обновление статуса через WebSocket
+        from app.websocket.manager import websocket_manager
+        await websocket_manager.broadcast_order_status_update(
+            order.to_dict(), 
+            taxipark_id
+        )
+        
+        return {
+            "success": True,
+            "message": "Order status updated successfully",
+            "order": order.to_dict()
         }
         
     except Exception as e:

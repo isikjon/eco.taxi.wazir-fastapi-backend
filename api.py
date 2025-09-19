@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -45,6 +45,90 @@ app.include_router(superadmin_router)
 
 # Путь к базе данных
 DB_PATH = "taxi_admin.db"
+
+# API для обновления статуса заказа водителем
+@app.put("/api/orders/{order_id}/status")
+async def update_order_status_by_driver(order_id: int, request: Request):
+    """Обновить статус заказа водителем"""
+    try:
+        data = await request.json()
+        status = data.get('status')
+        driver_id = data.get('driver_id')
+        timestamp = data.get('timestamp')
+        
+        if not status or not driver_id:
+            raise HTTPException(status_code=400, detail="Status and driver_id are required")
+        
+        valid_statuses = ['accepted', 'navigating_to_a', 'arrived_at_a', 'navigating_to_b', 'completed', 'cancelled']
+        if status not in valid_statuses:
+            raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+        
+        # Получаем сессию БД
+        db = SessionLocal()
+        
+        try:
+            from app.models.order import Order
+            from app.models.driver import Driver
+            from datetime import datetime
+            
+            # Проверяем водителя
+            driver = db.query(Driver).filter(Driver.id == driver_id).first()
+            if not driver:
+                raise HTTPException(status_code=404, detail="Driver not found")
+            
+            # Находим заказ
+            order = db.query(Order).filter(
+                Order.id == order_id,
+                Order.driver_id == driver_id
+            ).first()
+            
+            if not order:
+                raise HTTPException(status_code=404, detail="Order not found")
+            
+            # Обновляем статус
+            old_status = order.status
+            order.status = status
+            
+            # Обновляем временные метки
+            now = datetime.now()
+            if status == "accepted":
+                order.accepted_at = now
+            elif status == "arrived_at_a":
+                order.arrived_at_a = now
+            elif status == "navigating_to_b":
+                order.started_to_b = now
+            elif status == "completed":
+                order.completed_at = now
+            elif status == "cancelled":
+                order.cancelled_at = now
+            
+            db.commit()
+            
+            # Отправляем обновление через WebSocket
+            from app.websocket.manager import websocket_manager
+            await websocket_manager.send_to_taxipark({
+                "type": "order_status_changed",
+                "order_id": order_id,
+                "order_number": order.order_number,
+                "old_status": old_status,
+                "new_status": status,
+                "driver_id": str(driver_id),
+                "timestamp": timestamp or now.isoformat()
+            }, order.taxipark_id, exclude_user=str(driver_id))
+            
+            return {
+                "success": True,
+                "message": "Order status updated successfully",
+                "order_id": order_id,
+                "old_status": old_status,
+                "new_status": status
+            }
+            
+        finally:
+            db.close()
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 # События запуска и остановки приложения
 @app.on_event("startup")

@@ -8,6 +8,7 @@ from app.database.init_db import init_database
 from app.api.auth.routes import router as auth_router
 from app.api.superadmin.routes import router as superadmin_router
 from app.api.dispatcher.routes import router as dispatcher_router
+from app.websocket.routes import router as websocket_router
 from app.middleware.dispatcher_auth import check_dispatcher_auth
 
 # Импортируем API endpoints для мобильного приложения
@@ -74,6 +75,13 @@ for route in dispatcher_router.routes:
         print(f"    🔗 {route.methods} {route.path} -> {route.name}")
 
 app.include_router(dispatcher_router)
+
+# Подключаем WebSocket routes
+for route in websocket_router.routes:
+    if hasattr(route, 'path'):
+        print(f"    🔗 WebSocket {route.path} -> {route.name}")
+
+app.include_router(websocket_router)
 
 # Подключаем API endpoints для мобильного приложения
 app.add_api_route("/api/parks", get_parks, methods=["GET"], tags=["mobile-api"])

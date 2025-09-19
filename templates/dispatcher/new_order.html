@@ -3,14 +3,20 @@
 {% block title %}Новый заказ - Taxi 2.0{% endblock %}
 
 {% block extra_head %}
-<script src="https://mapgl.2gis.com/api/js/v1?key=a5dd76ec-6e17-4b2a-b65f-e353f1088294"></script>
+<script src="https://mapgl.2gis.com/api/js/v1?key=50ee04cc-386a-4c4a-9fb7-dc3573eceb7e"></script>
+<script src="https://unpkg.com/@2gis/mapgl-directions@^2/dist/directions.js"></script>
 <script>
     let map;
     let markerA = null;
     let markerB = null;
     let currentTariff = null;
     let currentTariffPrice = 0;
-let currentRoute = null;
+    let currentRoute = null;
+    let globalDirections = null;
+    
+    // Простые переменные для хранения координат
+    let pointACoords = null;
+    let pointBCoords = null;
     
     const tariffPrices = {
         'Эконом': 48,
@@ -28,8 +34,9 @@ function initMap() {
     
     map = new mapgl.Map('map', {
         center: osh,
-        zoom: 12,
-        key: 'a5dd76ec-6e17-4b2a-b65f-e353f1088294'
+        zoom: 13,
+        key: '50ee04cc-386a-4c4a-9fb7-dc3573eceb7e',
+        locale: 'ru_KG'
     });
     
     
@@ -53,6 +60,14 @@ function initMap() {
             reverseGeocode(coords, 'pickup-address');
         }
     });
+
+    // Создаем глобальный Directions объект один раз
+    if (typeof mapgl.Directions !== 'undefined') {
+        globalDirections = new mapgl.Directions(map, {
+            directionsApiKey: '50ee04cc-386a-4c4a-9fb7-dc3573eceb7e'
+        });
+        console.log('Глобальный Directions API создан');
+    }
 
     initDriverSelect();
     console.log('2ГИС карта инициализирована');
@@ -80,6 +95,13 @@ function setPointA(coordinates) {
     }
     
     console.log('Создаем маркер A с координатами:', coords);
+    
+    // Сохраняем координаты в простой переменной
+    pointACoords = {
+        latitude: coords[1],  // lat
+        longitude: coords[0]  // lng
+    };
+    console.log('Сохранены координаты точки A:', pointACoords);
     
     markerA = new mapgl.Marker(map, {
         coordinates: coords,
@@ -114,6 +136,13 @@ function setPointB(coordinates) {
     
     console.log('Создаем маркер B с координатами:', coords);
     
+    // Сохраняем координаты в простой переменной
+    pointBCoords = {
+        latitude: coords[1],  // lat
+        longitude: coords[0]  // lng
+    };
+    console.log('Сохранены координаты точки B:', pointBCoords);
+    
     markerB = new mapgl.Marker(map, {
         coordinates: coords,
         icon: 'https://docs.2gis.com/img/dotMarker.svg'
@@ -125,7 +154,7 @@ function setPointB(coordinates) {
 }
 
 function reverseGeocode(coords, inputId) {
-    fetch(`https://catalog.api.2gis.com/3.0/items/geocode?lon=${coords[0]}&lat=${coords[1]}&fields=items.point&key=a5dd76ec-6e17-4b2a-b65f-e353f1088294`)
+    fetch(`https://catalog.api.2gis.com/3.0/items/geocode?lon=${coords[0]}&lat=${coords[1]}&fields=items.point,items.full_name&key=50ee04cc-386a-4c4a-9fb7-dc3573eceb7e&locale=ru_KG`)
         .then(response => response.json())
         .then(data => {
             const input = document.getElementById(inputId);
@@ -137,8 +166,8 @@ function reverseGeocode(coords, inputId) {
         })
         .catch(error => {
             console.error('Ошибка геокодирования:', error);
-        const input = document.getElementById(inputId);
-        if (input) {
+            const input = document.getElementById(inputId);
+            if (input) {
                 input.value = `${coords[1].toFixed(6)}, ${coords[0].toFixed(6)}`;
             }
         });
@@ -153,53 +182,260 @@ async function calculateRoute() {
     const coordsB = markerB.getCoordinates();
     
     if (currentRoute) {
-        currentRoute.destroy();
+        if (typeof currentRoute.clear === 'function') {
+            currentRoute.clear();
+        } else if (typeof currentRoute.destroy === 'function') {
+            currentRoute.destroy();
+        }
         currentRoute = null;
     }
     
     console.log('Координаты для маршрута:', coordsA, coordsB);
     
     try {
+        console.log('Используем глобальный Directions API');
+        
+        // Используем глобальный Directions объект
+        if (globalDirections) {
+            console.log('Строим маршрут через глобальный Directions API:', coordsA, coordsB);
+            
+            // Сначала очищаем предыдущий маршрут
+            globalDirections.clear();
+            
+            // Таймаут для Directions API
+            let routeBuilt = false;
+            const timeout = setTimeout(() => {
+                if (!routeBuilt) {
+                    console.log('Directions API не ответил за 3 секунды, используем Distance Matrix API');
+                    calculateDistanceAndTime(coordsA, coordsB);
+                }
+            }, 3000); // 3 секунды таймаут
+            
+            // Обработчики событий (переустанавливаем каждый раз)
+            const onRoute = (result) => {
+                routeBuilt = true;
+                clearTimeout(timeout);
+                console.log('Маршрут построен через глобальный Directions API:', result);
+                
+                // После построения маршрута используем Distance Matrix API для точного расчета
+                calculateDistanceAndTime(coordsA, coordsB);
+                
+                // Удаляем обработчики
+                globalDirections.off('route', onRoute);
+                globalDirections.off('error', onError);
+            };
+            
+            const onError = (err) => {
+                routeBuilt = true;
+                clearTimeout(timeout);
+                console.error('Ошибка глобального Directions API:', err);
+                // Fallback - используем Distance Matrix API
+                calculateDistanceAndTime(coordsA, coordsB);
+                
+                // Удаляем обработчики
+                globalDirections.off('route', onRoute);
+                globalDirections.off('error', onError);
+            };
+            
+            // Устанавливаем обработчики
+            globalDirections.on('route', onRoute);
+            globalDirections.on('error', onError);
+            
+            // Строим маршрут
+            globalDirections.carRoute({
+                points: [
+                    [coordsA[0], coordsA[1]], // [lon, lat]
+                    [coordsB[0], coordsB[1]]  // [lon, lat]
+                ]
+            });
+            
+            // Сохраняем ссылку на глобальный directions
+            currentRoute = globalDirections;
+            console.log('currentRoute установлен как глобальный Directions');
+            
+        } else {
+            console.log('Глобальный Directions API недоступен, используем Distance Matrix API');
+            // Используем Distance Matrix API напрямую
+            calculateDistanceAndTime(coordsA, coordsB);
+        }
+        
+    } catch (error) {
+        console.error('Ошибка при построении маршрута:', error);
+        // Fallback - используем Distance Matrix API
+        calculateDistanceAndTime(coordsA, coordsB);
+    }
+}
+
+async function calculateDistanceAndTime(coordsA, coordsB) {
+    console.log('Используем Distance Matrix API для расчета расстояния и времени');
+    
+    try {
         const requestBody = {
-            points: [
-                { lat: coordsA[1], lon: coordsA[0] },
-                { lat: coordsB[1], lon: coordsB[0] }
+            origins: [
+                {
+                    lat: coordsA[1],
+                    lon: coordsA[0]
+                }
             ],
-            locale: "ru",
-            transport: "driving",
-            output: "detailed"
+            destinations: [
+                {
+                    lat: coordsB[1],
+                    lon: coordsB[0]
+                }
+            ],
+            transport: "car",
+            type: "shortest"
         };
         
-        console.log('Отправляем запрос к Routing API:', requestBody);
+        console.log('Отправляем запрос к Distance Matrix API:', requestBody);
         
-        const response = await fetch('https://routing.api.2gis.com/routing/7.0.0/global?key=a5dd76ec-6e17-4b2a-b65f-e353f1088294', {
+        const response = await fetch('https://routing.api.2gis.com/routing/7.0.0/global?key=50ee04cc-386a-4c4a-9fb7-dc3573eceb7e', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(requestBody)
+            body: JSON.stringify({
+                points: [
+                    {
+                        type: "pedo",
+                        lat: coordsA[1],
+                        lon: coordsA[0]
+                    },
+                    {
+                        type: "pedo", 
+                        lat: coordsB[1],
+                        lon: coordsB[0]
+                    }
+                ],
+                transport: "car",
+                route_mode: "fastest"
+            })
         });
         
         if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Ошибка Distance Matrix API:', response.status, errorText);
             throw new Error(`HTTP error! status: ${response.status}`);
         }
         
         const data = await response.json();
         console.log('Ответ от Routing API:', data);
         
-        if (data.status === 'OK' && data.result && data.result.length > 0) {
+        if (data && data.result && data.result.length > 0) {
             const route = data.result[0];
-            displayRouteInfo(route);
-            drawRouteOnMap(route);
+            displayRouteInfoFromRoutingAPI(route);
+            // НЕ рисуем дополнительный маршрут - используем только Directions API для визуализации
+            console.log('Данные получены, визуализация остается через Directions API');
         } else {
-            console.error('Маршрут не найден:', data);
+            console.error('Маршрут не найден через Routing API:', data);
+            // Показываем ошибку - нет реальных данных
             displayRouteError();
+            console.log('Не удалось получить реальные данные от 2ГИС');
         }
         
     } catch (error) {
-        console.error('Ошибка при запросе к Routing API:', error);
+        console.error('Ошибка при запросе к Distance Matrix API:', error);
+        // Показываем ошибку - нет реальных данных
         displayRouteError();
+        console.log('Не удалось получить реальные данные от 2ГИС');
     }
+}
+
+function displayRouteInfoFromDistanceMatrix(route) {
+    console.log('Обрабатываем данные маршрута из Distance Matrix API:', route);
+    
+    const distanceDisplay = document.getElementById('distance-display');
+    const durationDisplay = document.getElementById('duration-display');
+    const priceDisplay = document.getElementById('price-display');
+    
+    // Distance Matrix API возвращает данные в полях distance (метры) и duration (секунды)
+    const distance = route.distance ? (route.distance / 1000) : 0; // Конвертируем в км
+    const duration = route.duration ? Math.round(route.duration / 60) : 0; // Конвертируем в минуты
+    
+    console.log('Извлеченные данные - расстояние:', distance, 'км, время:', duration, 'мин');
+    
+    if (distanceDisplay) {
+        distanceDisplay.textContent = `Расстояние: ${distance.toFixed(1)} км`;
+    }
+    if (durationDisplay) {
+        durationDisplay.textContent = `Время: ${duration} мин`;
+    }
+
+    if (currentTariff && currentTariffPrice > 0) {
+        const price = Math.round(distance * currentTariffPrice);
+        if (priceDisplay) {
+            priceDisplay.textContent = `Цена: ${price} сом`;
+        }
+    } else {
+        if (priceDisplay) {
+            priceDisplay.textContent = 'Цена: выберите водителя';
+        }
+    }
+}
+
+function displaySimpleRouteInfo(distance, duration) {
+    console.log('Отображаем простые данные маршрута - расстояние:', distance, 'км, время:', duration, 'мин');
+    
+    const distanceDisplay = document.getElementById('distance-display');
+    const durationDisplay = document.getElementById('duration-display');
+    const priceDisplay = document.getElementById('price-display');
+    
+    if (distanceDisplay) {
+        distanceDisplay.textContent = `Расстояние: ~${distance.toFixed(1)} км`;
+    }
+    if (durationDisplay) {
+        durationDisplay.textContent = `Время: ~${duration} мин`;
+    }
+
+    if (currentTariff && currentTariffPrice > 0) {
+        const price = Math.round(distance * currentTariffPrice);
+        if (priceDisplay) {
+            priceDisplay.textContent = `Цена: ~${price} сом`;
+        }
+    } else {
+        if (priceDisplay) {
+            priceDisplay.textContent = 'Цена: выберите водителя';
+        }
+    }
+}
+
+function drawSimpleRoute(coordsA, coordsB) {
+    console.log('Рисуем простую линию между точками');
+    
+    if (currentRoute) {
+        if (typeof currentRoute.destroy === 'function') {
+            currentRoute.destroy();
+        } else if (typeof currentRoute.remove === 'function') {
+            currentRoute.remove();
+        }
+        currentRoute = null;
+    }
+    
+    // Создаем простую линию между точками
+    const polyline = new mapgl.Polyline(map, {
+        coordinates: [coordsA, coordsB],
+        color: '#028eff',
+        width: 4
+    });
+    
+    currentRoute = polyline;
+    
+    // Подгоняем карту под обе точки
+    map.fitBounds({
+        northEast: [Math.max(coordsA[0], coordsB[0]), Math.max(coordsA[1], coordsB[1])],
+        southWest: [Math.min(coordsA[0], coordsB[0]), Math.min(coordsA[1], coordsB[1])]
+    });
+}
+
+function calculateDistance(coord1, coord2) {
+    const R = 6371; // Радиус Земли в км
+    const dLat = (coord2[1] - coord1[1]) * Math.PI / 180;
+    const dLon = (coord2[0] - coord1[0]) * Math.PI / 180;
+    const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+        Math.cos(coord1[1] * Math.PI / 180) * Math.cos(coord2[1] * Math.PI / 180) *
+        Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
 }
 
 function displayRouteInfo(route) {
@@ -211,6 +447,50 @@ function displayRouteInfo(route) {
     
     const distance = route.total_distance ? (route.total_distance / 1000) : 0;
     const duration = route.total_duration ? Math.round(route.total_duration / 60) : 0;
+    
+    console.log('Извлеченные данные - расстояние:', distance, 'км, время:', duration, 'мин');
+    
+    if (distanceDisplay) {
+        distanceDisplay.textContent = `Расстояние: ${distance.toFixed(1)} км`;
+    }
+    if (durationDisplay) {
+        durationDisplay.textContent = `Время: ${duration} мин`;
+    }
+
+    if (currentTariff && currentTariffPrice > 0) {
+        const price = Math.round(distance * currentTariffPrice);
+        if (priceDisplay) {
+            priceDisplay.textContent = `Цена: ${price} сом`;
+        }
+    } else {
+        if (priceDisplay) {
+            priceDisplay.textContent = 'Цена: выберите водителя';
+        }
+    }
+}
+
+function displayRouteInfoFromDirections(route) {
+    console.log('Обрабатываем данные маршрута из Directions API:', route);
+    
+    const distanceDisplay = document.getElementById('distance-display');
+    const durationDisplay = document.getElementById('duration-display');
+    const priceDisplay = document.getElementById('price-display');
+    
+    // Directions API может возвращать данные в разных полях
+    let distance = 0;
+    let duration = 0;
+    
+    if (route.distance) {
+        distance = route.distance / 1000; // Конвертируем метры в км
+    } else if (route.total_distance) {
+        distance = route.total_distance / 1000;
+    }
+    
+    if (route.duration) {
+        duration = Math.round(route.duration / 60); // Конвертируем секунды в минуты
+    } else if (route.total_duration) {
+        duration = Math.round(route.total_duration / 60);
+    }
     
     console.log('Извлеченные данные - расстояние:', distance, 'км, время:', duration, 'мин');
     
@@ -461,17 +741,47 @@ function setupAutocomplete(input, pointType) {
 async function searchAddresses(query) {
     console.log('Поиск адресов для запроса:', query);
     
-    // Используем локальный поиск, который всегда работает
-    const localResults = searchLocalAddresses(query);
+    if (!query || query.length < 2) {
+        return [];
+    }
     
+    try {
+        // Поиск через 2ГИС API с ограничением по Кыргызстану
+        const kyrgyzstanBounds = {
+            point1: "69.0,43.3",  // Северо-запад Кыргызстана
+            point2: "80.3,39.2"   // Юго-восток Кыргызстана
+        };
+        
+        const apiUrl = `https://catalog.api.2gis.com/3.0/items?key=50ee04cc-386a-4c4a-9fb7-dc3573eceb7e&q=${encodeURIComponent(query)}&point1=${kyrgyzstanBounds.point1}&point2=${kyrgyzstanBounds.point2}&locale=ru_KG&fields=items.point,items.name,items.full_name&limit=10`;
+        
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+        
+        if (data.result && data.result.items) {
+            const apiResults = data.result.items.map(item => ({
+                full_name: item.full_name || item.name,
+                address_name: item.name,
+                point: {
+                    lat: item.point.lat,
+                    lon: item.point.lon
+                }
+            }));
+            
+            console.log('Найдено API результатов:', apiResults.length);
+            return apiResults;
+        }
+    } catch (error) {
+        console.error('Ошибка API поиска:', error);
+    }
+    
+    // Fallback на локальный поиск
+    const localResults = searchLocalAddresses(query);
     if (localResults.length > 0) {
         console.log('Найдено локальных результатов:', localResults.length);
         return localResults;
     }
     
-    // Если локальный поиск не дал результатов, можно попробовать API (опционально)
-    // Пока отключаем API, так как он не работает с текущим ключом
-    console.log('Локальные результаты не найдены для запроса:', query);
+    console.log('Результаты не найдены для запроса:', query);
     return [];
 }
 
@@ -574,18 +884,35 @@ function searchLocalAddresses(query) {
     
     function resetPoints() {
         if (markerA) {
-        markerA.destroy();
+            markerA.destroy();
             markerA = null;
+            console.log('Маркер A удален');
         }
         if (markerB) {
-        markerB.destroy();
+            markerB.destroy();
             markerB = null;
+            console.log('Маркер B удален');
         }
         
-    if (currentRoute) {
-        currentRoute.destroy();
-        currentRoute = null;
+    // Сброс маршрута - используем глобальный Directions API
+    if (globalDirections) {
+        console.log('Сбрасываем маршрут через глобальный Directions API');
+        try {
+            globalDirections.clear();
+            console.log('✅ Глобальный маршрут сброшен методом clear() (официальный способ 2ГИС)');
+        } catch (error) {
+            console.error('Ошибка при сбросе глобального маршрута:', error);
+        }
     }
+    
+    // Обнуляем currentRoute
+    currentRoute = null;
+    console.log('currentRoute обнулен');
+    
+    // Очищаем сохраненные координаты
+    pointACoords = null;
+    pointBCoords = null;
+    console.log('Координаты точек очищены');
         
         const pickupInput = document.getElementById('pickup-address');
         const destinationInput = document.getElementById('destination-address');
@@ -613,6 +940,86 @@ document.addEventListener('DOMContentLoaded', function() {
     updateKyrgyzstanTime();
     setInterval(updateKyrgyzstanTime, 1000);
 });
+
+function displayRouteInfoFromRoutingAPI(route) {
+    console.log('Обрабатываем данные маршрута из Routing API:', route);
+    
+    const distanceDisplay = document.getElementById('distance-display');
+    const durationDisplay = document.getElementById('duration-display');
+    const priceDisplay = document.getElementById('price-display');
+    
+    // Routing API возвращает данные в полях total_distance и total_duration
+    const distance = route.total_distance ? (route.total_distance / 1000) : 0;
+    const duration = route.total_duration ? Math.round(route.total_duration / 60) : 0;
+    
+    console.log('Извлеченные данные из Routing API - расстояние:', distance, 'км, время:', duration, 'мин');
+    
+    if (distanceDisplay) {
+        distanceDisplay.textContent = `Расстояние: ${distance.toFixed(1)} км`;
+    }
+    if (durationDisplay) {
+        durationDisplay.textContent = `Время: ${duration} мин`;
+    }
+
+    if (currentTariff && currentTariffPrice > 0) {
+        const price = Math.round(distance * currentTariffPrice);
+        if (priceDisplay) {
+            priceDisplay.textContent = `Цена: ${price} сом`;
+        }
+    } else {
+        if (priceDisplay) {
+            priceDisplay.textContent = 'Цена: выберите водителя';
+        }
+    }
+}
+
+function drawRouteFromGeometry(geometry) {
+    console.log('Рисуем маршрут из геометрии Routing API');
+    
+    if (currentRoute) {
+        if (typeof currentRoute.destroy === 'function') {
+            currentRoute.destroy();
+        } else if (typeof currentRoute.remove === 'function') {
+            currentRoute.remove();
+        }
+        currentRoute = null;
+    }
+    
+    // Конвертируем геометрию в координаты для MapGL
+    const coordinates = [];
+    for (let i = 0; i < geometry.length; i += 2) {
+        coordinates.push([geometry[i], geometry[i + 1]]); // [lon, lat]
+    }
+    
+    console.log('Координаты маршрута:', coordinates.length, 'точек');
+    
+    // Создаем полилинию
+    const polyline = new mapgl.Polyline(map, {
+        coordinates: coordinates,
+        color: '#028eff',
+        width: 4
+    });
+    
+    currentRoute = polyline;
+    console.log('currentRoute установлен как Polyline:', currentRoute.constructor.name);
+    
+    // Подгоняем карту под маршрут
+    if (coordinates.length > 0) {
+        const bounds = {
+            northEast: [
+                Math.max(...coordinates.map(c => c[0])),
+                Math.max(...coordinates.map(c => c[1]))
+            ],
+            southWest: [
+                Math.min(...coordinates.map(c => c[0])),
+                Math.min(...coordinates.map(c => c[1]))
+            ]
+        };
+        
+        map.fitBounds(bounds, { padding: 50 });
+    }
+}
+
 </script>
 {% endblock %}
 
@@ -696,6 +1103,14 @@ document.addEventListener('DOMContentLoaded', function() {
             </div>
             <div class="main__order-details">
                 <div class="main__order-details-item main__order-details-where">
+                    <input type="text" placeholder="Имя клиента" id="client-name" class="main__order-input">
+                </div>
+                <div class="main__order-details-item main__order-details-whither">
+                    <input type="text" placeholder="Телефон клиента" id="client-phone" class="main__order-input">
+                </div>
+            </div>
+            <div class="main__order-details">
+                <div class="main__order-details-item main__order-details-where">
                     <input type="text" placeholder="Точка А (откуда)" id="pickup-address" class="main__order-input">
                 </div>
                 <div class="main__order-details-item main__order-details-whither">
@@ -717,23 +1132,21 @@ document.addEventListener('DOMContentLoaded', function() {
                             <th>Время</th>
                             <th>Откуда</th>
                             <th>Куда</th>
-                            <th>Сумма</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% if recent_orders %}
                             {% for order in recent_orders %}
                             <tr>
-                                <td>{{ order.id }}</td>
+                                <td>{{ order.order_number if order.order_number else order.id }}</td>
                                 <td>{{ order.created_at.strftime('%H:%M %d.%m.%y') if order.created_at else 'Не указано' }}</td>
                                 <td>{{ order.pickup_address if order.pickup_address else 'Не указано' }}</td>
                                 <td>{{ order.destination_address if order.destination_address else 'Не указано' }}</td>
-                                <td>{{ "%.0f"|format(order.price) if order.price else "0" }}</td>
                             </tr>
                             {% endfor %}
                         {% else %}
                             <tr>
-                                <td colspan="5" style="text-align: center; padding: 20px; color: #888;">
+                                <td colspan="8" style="text-align: center; padding: 20px; color: #888;">
                                     Заказов нет
                                 </td>
                             </tr>
@@ -768,9 +1181,14 @@ document.addEventListener('DOMContentLoaded', function() {
 
 {% block extra_scripts %}
 <script>
-    function createNewOrder() {
+    function generateNewOrderNumber() {
         const newOrderNumber = 'WDD10' + Math.floor(Math.random() * 9000000) + 1000000;
         document.getElementById('order-number').textContent = newOrderNumber;
+        return newOrderNumber;
+    }
+    
+    function createNewOrder() {
+        generateNewOrderNumber();
 
         const now = new Date();
         document.getElementById('order-date').textContent = now.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' });
@@ -788,14 +1206,37 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     function submitOrder() {
+        // Используем сохраненные координаты
+        console.log('Координаты точки A:', pointACoords);
+        console.log('Координаты точки B:', pointBCoords);
+        
+        // Получаем рассчитанные данные
+        const distanceText = document.getElementById('distance-display').textContent;
+        const durationText = document.getElementById('duration-display').textContent;
+        const priceText = document.getElementById('price-display').textContent;
+        
+        // Извлекаем числовые значения
+        const distance = distanceText ? parseFloat(distanceText.match(/[\d.]+/)?.[0] || 0) : 0;
+        const duration = durationText ? parseInt(durationText.match(/\d+/)?.[0] || 0) : 0;
+        const price = priceText ? parseFloat(priceText.match(/[\d.]+/)?.[0] || 0) : 0;
+        
         const orderData = {
             order_number: document.getElementById('order-number').textContent,
+            client_name: document.getElementById('client-name').value || '',
+            client_phone: document.getElementById('client-phone').value || '',
             driver_id: document.getElementById('driver-select').value,
             tariff: document.getElementById('tariff-select').value,
             payment_method: document.getElementById('payment-select').value,
             pickup_address: document.getElementById('pickup-address').value,
+            pickup_latitude: pointACoords ? pointACoords.latitude : null,
+            pickup_longitude: pointACoords ? pointACoords.longitude : null,
             destination_address: document.getElementById('destination-address').value,
-            notes: document.getElementById('order-notes').value
+            destination_latitude: pointBCoords ? pointBCoords.latitude : null,
+            destination_longitude: pointBCoords ? pointBCoords.longitude : null,
+            distance: distance,
+            duration: duration,
+            price: price,
+            notes: document.getElementById('order-notes').value || ''
         };
         
         if (!orderData.driver_id) {
@@ -818,6 +1259,16 @@ document.addEventListener('DOMContentLoaded', function() {
             alert('Введите адрес назначения');
             return;
         }
+        if (!pointACoords) {
+            alert('Установите точку А на карте');
+            return;
+        }
+        if (!pointBCoords) {
+            alert('Установите точку Б на карте');
+            return;
+        }
+        
+        console.log('Данные заказа для отправки:', orderData);
         
         if (confirm('Создать заказ?')) {
             fetch('/disp/api/create-order', {
@@ -830,8 +1281,32 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    alert('Заказ успешно создан');
-                    location.reload();
+                    console.log('Заказ создан успешно:', data.order);
+                    alert(`Заказ ${data.order.order_number} успешно создан!`);
+                    
+                    // Показываем детали заказа
+                    const orderDetails = `
+Номер заказа: ${data.order.order_number}
+Водитель: ${data.order.driver_name || 'Не указан'}
+Тариф: ${data.order.tariff}
+Оплата: ${data.order.payment_method}
+Откуда: ${data.order.pickup_address}
+Куда: ${data.order.destination_address}
+Расстояние: ${data.order.distance || 0} км
+Время: ${data.order.duration || 0} мин
+Цена: ${data.order.price || 0} сом
+Статус: ${data.order.status}
+                    `;
+                    console.log('Детали заказа:', orderDetails);
+                    
+                    // Очищаем форму
+                    resetPoints();
+                    document.getElementById('client-name').value = '';
+                    document.getElementById('client-phone').value = '';
+                    document.getElementById('order-notes').value = '';
+                    
+                    // Обновляем номер заказа
+                    generateNewOrderNumber();
                 } else {
                     alert('Ошибка при создании заказа: ' + (data.message || 'Неизвестная ошибка'));
                 }
@@ -937,6 +1412,13 @@ html {
  .tariff-active {
      background-color: #3b8c4d !important;
      color: white !important;
+ }
+
+ .main__table thead tr th {
+     font-size: 13px;
+ }
+ .main__table tbody td {
+     font-size: 12px;
  }
 </style>
 {% endblock %}

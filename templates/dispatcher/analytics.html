@@ -1,0 +1,264 @@
+{% extends "dispatcher/base.html" %}
+
+{% block title %}Аналитика - {{ dispatcher.taxipark.name if dispatcher else "Ош Титан Парк" }}{% endblock %}
+
+{% block nav_analytics_active %}navbar__links-content-active{% endblock %}
+
+{% block content %}
+<style>
+    .main__analytics {
+        padding: 20px;
+        background-color: #1a1a1a;
+        border-radius: 8px;
+        margin: 20px 0;
+    }
+    
+    .analytics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .analytics-card {
+        background-color: #2a2a2a;
+        border-radius: 8px;
+        padding: 20px;
+        border: 1px solid #444;
+    }
+    
+    .analytics-card h3 {
+        color: #fff;
+        margin-bottom: 15px;
+        font-size: 18px;
+    }
+    
+    .analytics-number {
+        font-size: 32px;
+        font-weight: bold;
+        color: #007bff;
+        margin-bottom: 10px;
+    }
+    
+    .analytics-label {
+        color: #888;
+        font-size: 14px;
+    }
+    
+    .charts-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+        gap: 20px;
+    }
+    
+    .chart-card {
+        background-color: #2a2a2a;
+        border-radius: 8px;
+        padding: 20px;
+        border: 1px solid #444;
+    }
+    
+    .chart-title {
+        color: #fff;
+        font-size: 16px;
+        margin-bottom: 15px;
+        text-align: center;
+    }
+    
+    .simple-chart {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 200px;
+        background-color: #333;
+        border-radius: 8px;
+        margin-bottom: 15px;
+    }
+    
+    .chart-legend {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+    
+    .legend-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        color: #fff;
+        font-size: 14px;
+    }
+    
+    .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+    }
+    
+    .legend-color--blue { background-color: #007bff; }
+    .legend-color--green { background-color: #28a745; }
+    .legend-color--red { background-color: #dc3545; }
+    .legend-color--yellow { background-color: #ffc107; }
+    .legend-color--purple { background-color: #6f42c1; }
+    .legend-color--orange { background-color: #fd7e14; }
+    
+    .chart-text {
+        color: #fff;
+        font-size: 24px;
+        font-weight: bold;
+    }
+</style>
+
+<div class="main__analytics">
+    <h2 style="color: #fff; margin-bottom: 30px; text-align: center;">Аналитика таксопарка</h2>
+    
+    <!-- Основные показатели -->
+    <div class="analytics-grid">
+        <div class="analytics-card">
+            <h3>Водители</h3>
+            <div class="analytics-number">{{ drivers_count if drivers_count else "0" }}</div>
+            <div class="analytics-label">Всего водителей в системе</div>
+        </div>
+        
+        <div class="analytics-card">
+            <h3>Заказы</h3>
+            <div class="analytics-number">{{ total_orders if total_orders else "0" }}</div>
+            <div class="analytics-label">Всего заказов за все время</div>
+        </div>
+        
+        <div class="analytics-card">
+            <h3>Пополнения</h3>
+            <div class="analytics-number">{{ total_topups if total_topups else "0" }}</div>
+            <div class="analytics-label">Всего пополнений баланса</div>
+        </div>
+        
+        <div class="analytics-card">
+            <h3>Баланс</h3>
+            <div class="analytics-number">{{ "%.0f"|format(balance) if balance else "0" }}</div>
+            <div class="analytics-label">Текущий баланс таксопарка</div>
+        </div>
+    </div>
+    
+    <!-- Диаграммы -->
+    <div class="charts-container">
+        <!-- Статусы заказов -->
+        <div class="chart-card">
+            <div class="chart-title">Статусы заказов</div>
+            <div class="simple-chart">
+                <div class="chart-text">
+                    {% if orders_by_status %}
+                        {% set completed = orders_by_status.get('completed', 0) %}
+                        {% set cancelled = orders_by_status.get('cancelled', 0) %}
+                        {% set total = completed + cancelled %}
+                        {% if total > 0 %}
+                            {{ "%.0f"|format((completed / total) * 100) }}%
+                        {% else %}
+                            0%
+                        {% endif %}
+                    {% else %}
+                        0%
+                    {% endif %}
+                </div>
+            </div>
+            <div class="chart-legend">
+                {% if orders_by_status %}
+                    <div class="legend-item">
+                        <div class="legend-color legend-color--green"></div>
+                        <span>Выполнено: {{ orders_by_status.get('completed', 0) }}</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color legend-color--red"></div>
+                        <span>Отменено: {{ orders_by_status.get('cancelled', 0) }}</span>
+                    </div>
+                    <div class="legend-item">
+                        <div class="legend-color legend-color--blue"></div>
+                        <span>В процессе: {{ orders_by_status.get('in_progress', 0) + orders_by_status.get('received', 0) + orders_by_status.get('accepted', 0) }}</span>
+                    </div>
+                {% else %}
+                    <div class="legend-item">
+                        <div class="legend-color legend-color--blue"></div>
+                        <span>Нет данных</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Тарифы -->
+        <div class="chart-card">
+            <div class="chart-title">Популярные тарифы</div>
+            <div class="simple-chart">
+                <div class="chart-text">
+                    {% if tariffs_data %}
+                        {% set total_tariffs = tariffs_data.values() | sum %}
+                        {% if total_tariffs > 0 %}
+                            {% set most_popular = tariffs_data.values() | max %}
+                            {{ "%.0f"|format((most_popular / total_tariffs) * 100) }}%
+                        {% else %}
+                            0%
+                        {% endif %}
+                    {% else %}
+                        0%
+                    {% endif %}
+                </div>
+            </div>
+            <div class="chart-legend">
+                {% if tariffs_data %}
+                    {% for tariff, count in tariffs_data.items() %}
+                    <div class="legend-item">
+                        <div class="legend-color legend-color--{% if loop.index == 1 %}green{% elif loop.index == 2 %}blue{% else %}purple{% endif %}"></div>
+                        <span>{{ tariff }}: {{ count }}</span>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="legend-item">
+                        <div class="legend-color legend-color--blue"></div>
+                        <span>Нет данных</span>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- Активность водителей -->
+        <div class="chart-card">
+            <div class="chart-title">Активность водителей</div>
+            <div class="simple-chart">
+                <div class="chart-text">
+                    {% if drivers_count and active_drivers %}
+                        {{ "%.0f"|format((active_drivers / drivers_count) * 100) }}%
+                    {% else %}
+                        0%
+                    {% endif %}
+                </div>
+            </div>
+            <div class="chart-legend">
+                <div class="legend-item">
+                    <div class="legend-color legend-color--green"></div>
+                    <span>Активные: {{ active_drivers if active_drivers else "0" }}</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color legend-color--red"></div>
+                    <span>Неактивные: {{ (drivers_count - active_drivers) if drivers_count and active_drivers else "0" }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    // Простая анимация появления карточек
+    document.addEventListener('DOMContentLoaded', function() {
+        const cards = document.querySelectorAll('.analytics-card, .chart-card');
+        cards.forEach((card, index) => {
+            card.style.opacity = '0';
+            card.style.transform = 'translateY(20px)';
+            setTimeout(() => {
+                card.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+                card.style.opacity = '1';
+                card.style.transform = 'translateY(0)';
+            }, index * 100);
+        });
+    });
+</script>
+{% endblock %}

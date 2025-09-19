@@ -23,7 +23,8 @@ class DispatcherService:
     @staticmethod
     def get_orders(db: Session, taxipark_id: int, limit: int = 50) -> List[Order]:
         """Получить заказы таксопарка"""
-        return db.query(Order).filter(Order.taxipark_id == taxipark_id).order_by(Order.created_at.desc()).limit(limit).all()
+        from sqlalchemy.orm import joinedload
+        return db.query(Order).options(joinedload(Order.driver)).filter(Order.taxipark_id == taxipark_id).order_by(Order.created_at.desc()).limit(limit).all()
     
     @staticmethod
     def get_orders_count_by_status(db: Session, taxipark_id: int) -> dict:
