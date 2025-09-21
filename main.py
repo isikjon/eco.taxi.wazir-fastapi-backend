@@ -15,7 +15,6 @@ from app.middleware.dispatcher_auth import check_dispatcher_auth
 # Импортируем API endpoints для мобильного приложения
 from api import get_parks, send_sms_code, login_driver, register_driver, check_driver_status
 from app.api.client import client_router
-from app.api.partners.routes import partners_router
 from api_balance import router as balance_router
 from api_driver_profile import router as driver_profile_router
 from api_photo_control import router as photo_control_router
@@ -120,12 +119,6 @@ for route in client_router.routes:
 
 app.include_router(client_router, tags=["client-api"])
 
-# Подключаем роутер партнеров
-for route in partners_router.routes:
-    if hasattr(route, 'path'):
-        print(f"    🔗 {route.methods} {route.path} -> {route.name}")
-
-app.include_router(partners_router)
 
 print("✅ All routers included successfully")
 
