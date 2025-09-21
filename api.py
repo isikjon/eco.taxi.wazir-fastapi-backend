@@ -482,4 +482,120 @@ async def check_driver_status(phoneNumber: str, db: SessionLocal = Depends(get_d
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8081, reload=True)
+
+
+# =============== CLIENT API ENDPOINTS ===============
+
+from fastapi import APIRouter, HTTPException, Depends
+from sqlalchemy.orm import Session
+from app.database.session import get_db
+from app.models.client import Client
+from app.schemas.client import ClientCreate, ClientLogin
+import random
+import string
+
+client_router = APIRouter(prefix="/api/clients", tags=["client-api"])
+
+@client_router.post("/register")
+async def register_client(client_data: ClientCreate, db: Session = Depends(get_db)):
+    """Регистрация нового клиента"""
+    try:
+        # Проверяем, существует ли клиент с таким номером
+        existing_client = db.query(Client).filter(Client.phone_number == client_data.phone_number).first()
+        
+        if existing_client:
+            return {
+                "success": False,
+                "error": "Клиент с таким номером уже существует"
+            }
+        
+        # Создаем нового клиента
+        new_client = Client(
+            first_name=client_data.first_name,
+            last_name=client_data.last_name,
+            phone_number=client_data.phone_number,
+            email=client_data.email,
+            preferred_payment_method=client_data.preferred_payment_method or "cash"
+        )
+        
+        db.add(new_client)
+        db.commit()
+        db.refresh(new_client)
+        
+        return {
+            "success": True,
+            "data": {
+                "client": new_client.to_dict(),
+                "message": "Клиент успешно зарегистрирован"
+            }
+        }
+        
+    except Exception as e:
+        db.rollback()
+        return {
+            "success": False,
+            "error": f"Ошибка регистрации: {str(e)}"
+        }
+
+@client_router.post("/login")
+async def login_client(login_data: ClientLogin, db: Session = Depends(get_db)):
+    """Авторизация клиента"""
+    try:
+        # Ищем клиента по номеру телефона
+        client = db.query(Client).filter(Client.phone_number == login_data.phone_number).first()
+        
+        if not client:
+            return {
+                "success": False,
+                "error": "Клиент не найден"
+            }
+        
+        # Проверяем статус клиента
+        if not client.is_active:
+            return {
+                "success": False,
+                "error": "blocked",
+                "message": "Ваш аккаунт заблокирован. Обратитесь в поддержку."
+            }
+        
+        return {
+            "success": True,
+            "data": {
+                "client": client.to_dict(),
+                "isNewUser": False
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Ошибка авторизации: {str(e)}"
+        }
+
+@client_router.get("/status")
+async def get_client_status(phone_number: str, db: Session = Depends(get_db)):
+    """Проверка статуса клиента"""
+    try:
+        client = db.query(Client).filter(Client.phone_number == phone_number).first()
+        
+        if not client:
+            return {
+                "success": False,
+                "error": "Клиент не найден"
+            }
+        
+        return {
+            "success": True,
+            "data": {
+                "client": client.to_dict()
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Ошибка проверки статуса: {str(e)}"
+        }
+
+# =============== END CLIENT API ENDPOINTS ===============
