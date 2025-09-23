@@ -22,15 +22,20 @@
                 <button style="padding: 0px;"><img src="/static/dispatcher/img/ico/search.png" alt="search"></button>
             </form>
         </div> -->
-        <div class="main__subheader-filing">
-            <form action="#" onchange="filterByStatus(this.value)">
-                <select name="status-filter">
+        <div class="main__subheader-filing" style="display: flex; gap: 10px;">
+            <form id="status-filter-form" action="#">
+                <select name="status-filter" id="status-filter" onchange="filterByStatus(this.value)">
                     <option value="all" {% if current_status == "all" %}selected{% endif %}>Все статусы</option>
                     <option value="approved" {% if current_status == "approved" %}selected{% endif %}>Принятые</option>
                     <option value="rejected" {% if current_status == "rejected" %}selected{% endif %}>Отклоненные</option>
                     <option value="pending" {% if current_status == "pending" %}selected{% endif %}>В ожидании</option>
                 </select>
             </form>
+            {% if has_filters %}
+            <button type="button" onclick="resetFilters()" class="main__btn-short">
+                Сбросить
+            </button>
+            {% endif %}
         </div>
     </div>
     <div class="main__subheader-drivers">
@@ -54,9 +59,38 @@
     <h3>Запросы на фотоконтроль</h3>
 </div>
 <div class="main__cards-wrapper" id="verifications-container">
-    <div style="text-align: center; padding: 40px; color: #888; grid-column: 1 / -1;">
-        <h3>Загрузка заявок...</h3>
-    </div>
+    {% if verifications %}
+        {% for verification in verifications %}
+        <div class="main__card-item">
+            <img src="/static/dispatcher/img/passport/1.png" alt="driver-photo">
+            <button class="main__btn">{{ verification.driver.first_name }} {{ verification.driver.last_name }}</button>
+            <button class="main__btn">{{ verification.driver.phone_number }}</button>
+            <button class="main__btn">Дата подачи: {{ verification.created_at.strftime('%d.%m.%Y %H:%M') if verification.created_at else 'Не указана' }}</button>
+            <button class="main__btn">Фотографий: {{ (verification.photos|length) if verification.photos else 0 }}</button>
+            <button class="main__btn" onclick="viewAllPhotos({{ verification.id }})">Посмотреть анкету</button>
+            <div class="main__card-btn">
+                {% if verification.status == 'pending' %}
+                    <button class="main__btn-green" onclick="approveVerification({{ verification.id }})">Одобрить</button>
+                    <button class="main__btn-short" onclick="showRejectModal({{ verification.id }})">Отклонить</button>
+                {% elif verification.status == 'approved' %}
+                    <button class="main__btn-green" disabled>Одобрено</button>
+                {% elif verification.status == 'rejected' %}
+                    <button class="main__btn-short" disabled>Отклонено</button>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div style="text-align: center; padding: 40px; color: #888; grid-column: 1 / -1;">
+            {% if has_filters %}
+                <h3>По выбранному фильтру заявок не найдено</h3>
+                <p>Попробуйте изменить фильтр или сбросить его</p>
+            {% else %}
+                <h3>Нет заявок на проверку</h3>
+                <p>Заявки на фотоконтроль появятся здесь</p>
+            {% endif %}
+        </div>
+    {% endif %}
 </div>
 
 <!-- Модальное окно для отклонения -->
@@ -183,12 +217,8 @@
 
     // Загрузка данных при загрузке страницы
     document.addEventListener('DOMContentLoaded', function() {
-        loadPendingVerifications();
-        
-        // Обновляем каждые 30 секунд
-        setInterval(() => {
-            loadPendingVerifications();
-        }, 30000);
+        // Данные уже загружены через backend, не нужно дополнительно загружать
+        console.log('Photo control page loaded with backend data');
     });
 
     // Загрузка заявок на проверку
@@ -419,7 +449,7 @@
             
             if (result.success) {
                 alert('Заявка одобрена!');
-                loadPendingVerifications();
+                window.location.reload();
                 } else {
                 alert('Ошибка при одобрении заявки');
             }
@@ -470,7 +500,7 @@
             if (result.success) {
                 alert('Заявка отклонена!');
                 closeRejectModal();
-                loadPendingVerifications();
+                window.location.reload();
             } else {
                 alert('Ошибка при отклонении заявки');
             }
@@ -480,10 +510,40 @@
         }
     });
 
-    // Старые функции (оставляем для совместимости)
+    // Функция фильтрации по статусу
     function filterByStatus(status) {
-        console.log('Фильтрация по статусу:', status);
-        // В новой версии фильтрация происходит автоматически через API
+        console.log('🔍 DEBUG: filterByStatus called with:', status);
+        console.log('🔍 DEBUG: Current URL:', window.location.href);
+        
+        if (!status || status === 'undefined') {
+            status = 'all';
+        }
+        
+        const currentUrl = new URL(window.location);
+        if (status === 'all') {
+            currentUrl.searchParams.delete('status');
+        } else {
+            currentUrl.searchParams.set('status', status);
+        }
+        
+        console.log('🔍 DEBUG: New URL:', currentUrl.toString());
+        console.log('🔍 DEBUG: Redirecting to:', currentUrl.toString());
+        
+        window.location.href = currentUrl.toString();
+    }
+    
+    // Функция сброса фильтров
+    function resetFilters() {
+        console.log('🔍 DEBUG: resetFilters called');
+        console.log('🔍 DEBUG: Current URL:', window.location.href);
+        
+        const currentUrl = new URL(window.location);
+        currentUrl.searchParams.delete('status');
+        
+        console.log('🔍 DEBUG: Reset URL:', currentUrl.toString());
+        console.log('🔍 DEBUG: Redirecting to:', currentUrl.toString());
+        
+        window.location.href = currentUrl.toString();
     }
 </script>
 {% endblock %}

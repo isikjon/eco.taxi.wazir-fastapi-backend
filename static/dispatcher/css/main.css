@@ -279,6 +279,8 @@ input[type=date]::-webkit-calendar-picker-indicator {
   cursor: pointer;
   border-radius: 5px;
   transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
 }
 .main__btn-short:hover {
   background: #535357;
@@ -1203,9 +1205,6 @@ html {
 }
 .main__card-item .main__btn {
   padding: 12px 2px;
-}
-.main__card-item .main__btn-green {
-  padding: unset;
 }
 .main__card-btn {
   display: flex;

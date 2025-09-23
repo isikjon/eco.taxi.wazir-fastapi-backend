@@ -18,7 +18,9 @@ async def dispatch_dashboard(
     db: Session = Depends(get_db),
     page: int = 1,
     per_page: int = 20,
-    status: str = None
+    status: str = None,
+    date_from: str = None,
+    date_to: str = None
 ):
     dispatcher = getattr(request.state, 'dispatcher', None)
     taxipark_id = getattr(request.state, 'taxipark_id', None)
@@ -41,6 +43,55 @@ async def dispatch_dashboard(
     if status and status != 'all':
         query = query.filter(Order.status == status)
     
+    # Применяем фильтр по датам если указаны
+    print(f"🔍 DEBUG: date_from={date_from}, date_to={date_to}")
+    
+    if date_from:
+        from datetime import datetime
+        try:
+            # Пробуем разные форматы дат
+            date_from_obj = None
+            for date_format in ['%Y-%m-%d', '%d.%m.%Y', '%d.%m.%y']:
+                try:
+                    date_from_obj = datetime.strptime(date_from, date_format)
+                    print(f"🔍 DEBUG: Parsed date_from={date_from_obj} using format {date_format}")
+                    break
+                except ValueError:
+                    continue
+            
+            if date_from_obj:
+                query = query.filter(Order.created_at >= date_from_obj)
+                print(f"🔍 DEBUG: Applied date_from filter: >= {date_from_obj}")
+            else:
+                print(f"🔍 DEBUG: Failed to parse date_from: {date_from}")
+        except Exception as e:
+            print(f"🔍 DEBUG: Error parsing date_from: {e}")
+            pass  # Игнорируем неверный формат даты
+    
+    if date_to:
+        from datetime import datetime, timedelta
+        try:
+            # Пробуем разные форматы дат
+            date_to_obj = None
+            for date_format in ['%Y-%m-%d', '%d.%m.%Y', '%d.%m.%y']:
+                try:
+                    date_to_obj = datetime.strptime(date_to, date_format)
+                    print(f"🔍 DEBUG: Parsed date_to={date_to_obj} using format {date_format}")
+                    break
+                except ValueError:
+                    continue
+            
+            if date_to_obj:
+                # Для date_to используем конец дня (23:59:59)
+                date_to_obj = date_to_obj.replace(hour=23, minute=59, second=59, microsecond=999999)
+                query = query.filter(Order.created_at <= date_to_obj)
+                print(f"🔍 DEBUG: Applied date_to filter: <= {date_to_obj}")
+            else:
+                print(f"🔍 DEBUG: Failed to parse date_to: {date_to}")
+        except Exception as e:
+            print(f"🔍 DEBUG: Error parsing date_to: {e}")
+            pass  # Игнорируем неверный формат даты
+    
     # Подсчитываем общее количество записей
     total_orders = query.count()
     
@@ -51,10 +102,58 @@ async def dispatch_dashboard(
     # Получаем заказы для текущей страницы
     orders = query.order_by(Order.created_at.desc()).offset(offset).limit(per_page).all()
     
+    # Отладочная информация о заказах
+    print(f"🔍 DEBUG: Found {len(orders)} orders")
+    for order in orders:
+        print(f"🔍 DEBUG: Order {order.id} - created_at: {order.created_at}, status: {order.status}")
+        
+        # Проверяем, соответствует ли заказ фильтрам
+        if date_from:
+            from datetime import datetime
+            try:
+                date_from_obj = None
+                for date_format in ['%Y-%m-%d', '%d.%m.%Y', '%d.%m.%y']:
+                    try:
+                        date_from_obj = datetime.strptime(date_from, date_format)
+                        break
+                    except ValueError:
+                        continue
+                
+                if date_from_obj and order.created_at:
+                    if order.created_at >= date_from_obj:
+                        print(f"🔍 DEBUG: Order {order.id} PASSES date_from filter")
+                    else:
+                        print(f"🔍 DEBUG: Order {order.id} FAILS date_from filter")
+            except Exception as e:
+                print(f"🔍 DEBUG: Error checking date_from for order {order.id}: {e}")
+        
+        if date_to:
+            from datetime import datetime
+            try:
+                date_to_obj = None
+                for date_format in ['%Y-%m-%d', '%d.%m.%Y', '%d.%m.%y']:
+                    try:
+                        date_to_obj = datetime.strptime(date_to, date_format)
+                        break
+                    except ValueError:
+                        continue
+                
+                if date_to_obj and order.created_at:
+                    date_to_obj = date_to_obj.replace(hour=23, minute=59, second=59, microsecond=999999)
+                    if order.created_at <= date_to_obj:
+                        print(f"🔍 DEBUG: Order {order.id} PASSES date_to filter")
+                    else:
+                        print(f"🔍 DEBUG: Order {order.id} FAILS date_to filter")
+            except Exception as e:
+                print(f"🔍 DEBUG: Error checking date_to for order {order.id}: {e}")
+    
     # Получаем уникальные статусы для статистики
     statuses = db.query(Order.status, func.count(Order.id)).filter(
         Order.taxipark_id == taxipark_id
     ).group_by(Order.status).all()
+    
+    # Проверяем, есть ли активные фильтры по датам
+    has_date_filters = bool(date_from or date_to)
     
     return templates.TemplateResponse("dispatcher/index.html", {
         "request": request,
@@ -69,7 +168,10 @@ async def dispatch_dashboard(
         "total_orders": total_orders,
         "per_page": per_page,
         "current_status": status,
-        "statuses": statuses
+        "statuses": statuses,
+        "date_from": date_from,
+        "date_to": date_to,
+        "has_date_filters": has_date_filters
     })
 
 @router.get("/analytics", response_class=HTMLResponse)
@@ -109,10 +211,7 @@ async def dispatch_analytics(request: Request, db: Session = Depends(get_db)):
     ).count()
     
     # Подсчитываем пополнения баланса
-    total_topups = db.query(DriverTransaction).join(Driver).filter(
-        Driver.taxipark_id == taxipark_id,
-        DriverTransaction.type == 'topup'
-    ).count()
+    total_topups = DispatcherService.get_total_topups_count(db, taxipark_id)
     
     return templates.TemplateResponse("dispatcher/analytics.html", {
         "request": request,
@@ -134,7 +233,8 @@ async def dispatch_drivers(
     page: int = 1, 
     per_page: int = 10,
     status: str = "all",
-    tariff: str = ""
+    tariff: str = "",
+    search: str = ""
 ):
     try:
         dispatcher = getattr(request.state, 'dispatcher', None)
@@ -145,7 +245,7 @@ async def dispatch_drivers(
         
         from app.models.driver import Driver
         from app.services.dispatcher_service import DispatcherService
-        from sqlalchemy import func
+        from sqlalchemy import func, or_
         
         # Базовый запрос для данного таксопарка
         query = db.query(Driver).filter(Driver.taxipark_id == taxipark_id)
@@ -159,8 +259,72 @@ async def dispatch_drivers(
         if tariff:
             query = query.filter(Driver.tariff == tariff)
         
+        # АХУЕННАЯ СИСТЕМА ПОИСКА СТРОГО НА КИРИЛЛИЦЕ
+        if search:
+            # Нормализация кириллического поиска
+            def normalize_cyrillic_search(search_text):
+                """Нормализует поисковый запрос для кириллицы"""
+                # Убираем лишние пробелы и приводим к нижнему регистру
+                normalized = search_text.strip().lower()
+                
+                # Заменяем проблемные символы
+                replacements = {
+                    'ё': 'е', 'й': 'и', 'ъ': '', 'ь': '', 
+                    ' ': ' ', '\t': ' ', '\n': ' ', '\r': ' '
+                }
+                
+                for old, new in replacements.items():
+                    normalized = normalized.replace(old, new)
+                
+                # Убираем множественные пробелы
+                import re
+                normalized = re.sub(r'\s+', ' ', normalized).strip()
+                
+                return normalized
+            
+            # Нормализуем поисковый запрос
+            search_normalized = normalize_cyrillic_search(search)
+            search_term = f"%{search_normalized}%"
+            
+            print(f"🔍 DEBUG: CYRILLIC SEARCH - original: '{search}' -> normalized: '{search_normalized}' -> term: '{search_term}'")
+            
+            # Получаем всех водителей для проверки
+            all_drivers_debug = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).all()
+            print(f"🔍 DEBUG: All drivers in taxipark {taxipark_id}:")
+            
+            matching_driver_ids = []
+            for driver in all_drivers_debug:
+                # Нормализуем имя водителя
+                driver_first_normalized = normalize_cyrillic_search(driver.first_name or "")
+                driver_last_normalized = normalize_cyrillic_search(driver.last_name or "")
+                driver_full_normalized = f"{driver_first_normalized} {driver_last_normalized}".strip()
+                
+                # Проверяем совпадения
+                matches = []
+                if search_normalized in driver_first_normalized:
+                    matches.append("first_name")
+                if search_normalized in driver_last_normalized:
+                    matches.append("last_name")
+                if search_normalized in driver_full_normalized:
+                    matches.append("full_name")
+                
+                print(f"🔍 DEBUG: Driver: '{driver.first_name} {driver.last_name}' -> '{driver_full_normalized}' (matches: {matches})")
+                
+                if matches:
+                    matching_driver_ids.append(driver.id)
+            
+            print(f"🔍 DEBUG: Found {len(matching_driver_ids)} matching drivers: {matching_driver_ids}")
+            
+            # Фильтруем по найденным ID
+            if matching_driver_ids:
+                query = query.filter(Driver.id.in_(matching_driver_ids))
+            else:
+                # Если ничего не найдено, делаем невозможный запрос
+                query = query.filter(Driver.id == -1)
+        
         # Получаем общее количество водителей после фильтрации
         total_drivers = query.count()
+        print(f"🔍 DEBUG: Total drivers after filtering: {total_drivers}")
         
         # Вычисляем пагинацию
         total_pages = (total_drivers + per_page - 1) // per_page
@@ -168,6 +332,14 @@ async def dispatch_drivers(
         
         # Получаем водителей для текущей страницы
         drivers = query.offset(offset).limit(per_page).all()
+        print(f"🔍 DEBUG: Drivers retrieved for page: {len(drivers)}")
+        
+        # Отладочная информация о найденных водителях
+        if search:
+            print(f"🔍 DEBUG: Found {len(drivers)} drivers for search '{search}'")
+            for driver in drivers:
+                full_name = f"{driver.first_name} {driver.last_name}"
+                print(f"🔍 DEBUG: Driver found: '{full_name}' (search: '{search}')")
         
         # Получаем статистику
         stats = DispatcherService.get_dispatcher_stats(db, taxipark_id)
@@ -183,7 +355,7 @@ async def dispatch_drivers(
                 tariffs.add(driver.tariff)
         
         # Проверяем, есть ли активные фильтры
-        has_filters = any([status != "all", tariff])
+        has_filters = any([status != "all", tariff, search])
         
         return templates.TemplateResponse("dispatcher/drivers.html", {
             "request": request,
@@ -198,7 +370,8 @@ async def dispatch_drivers(
             "per_page": per_page,
             "filters": {
                 "status": status,
-                "tariff": tariff
+                "tariff": tariff,
+                "search": search
             },
             "filter_options": {
                 "tariffs": sorted(tariffs)
@@ -479,44 +652,55 @@ async def dispatch_photo_control(request: Request, db: Session = Depends(get_db)
         return RedirectResponse(url='/disp/auth/login', status_code=302)
     
     from app.models.driver import Driver
+    from app.models.photo_verification import PhotoVerification
     from app.services.dispatcher_service import DispatcherService
     
-    # Получаем водителей для фото контроля
-    query = db.query(Driver).filter(Driver.taxipark_id == taxipark_id)
+    # Обрабатываем undefined или пустое значение
+    if not status or status == "undefined":
+        status = "all"
+    
+    print(f"🔍 DEBUG: Photo control page - status: {status}, taxipark_id: {taxipark_id}")
+    
+    # Получаем заявки на фото контроль из базы данных
+    query = db.query(PhotoVerification).filter(PhotoVerification.taxipark_id == taxipark_id)
     
     # Фильтрация по статусу
     if status == "approved":
-        # Принятые - активные водители
-        query = query.filter(Driver.is_active == True)
+        query = query.filter(PhotoVerification.status == "approved")
     elif status == "rejected":
-        # Отклоненные - неактивные водители
-        query = query.filter(Driver.is_active == False)
+        query = query.filter(PhotoVerification.status == "rejected")
     elif status == "pending":
-        # В ожидании - можно использовать дату создания для новых водителей
-        from datetime import datetime, timedelta
-        recent_date = datetime.now() - timedelta(days=7)  # Водители за последние 7 дней
-        query = query.filter(Driver.created_at >= recent_date)
+        query = query.filter(PhotoVerification.status == "pending")
+    # Если status == "all", показываем все заявки
     
-    drivers = query.all()
+    verifications = query.order_by(PhotoVerification.created_at.desc()).all()
+    
+    print(f"🔍 DEBUG: Found {len(verifications)} photo verifications for status '{status}'")
+    print(f"🔍 DEBUG: has_filters will be: {status != 'all'}")
     
     # Получаем статистику
     stats = DispatcherService.get_dispatcher_stats(db, taxipark_id)
     
-    # Подсчитываем статистику по статусам
-    total_drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).count()
-    active_drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id, Driver.is_active == True).count()
-    inactive_drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id, Driver.is_active == False).count()
+    # Подсчитываем статистику по статусам заявок
+    total_verifications = db.query(PhotoVerification).filter(PhotoVerification.taxipark_id == taxipark_id).count()
+    pending_verifications = db.query(PhotoVerification).filter(PhotoVerification.taxipark_id == taxipark_id, PhotoVerification.status == "pending").count()
+    approved_verifications = db.query(PhotoVerification).filter(PhotoVerification.taxipark_id == taxipark_id, PhotoVerification.status == "approved").count()
+    rejected_verifications = db.query(PhotoVerification).filter(PhotoVerification.taxipark_id == taxipark_id, PhotoVerification.status == "rejected").count()
+    
+    print(f"🔍 DEBUG: Stats - Total: {total_verifications}, Pending: {pending_verifications}, Approved: {approved_verifications}, Rejected: {rejected_verifications}")
     
     return templates.TemplateResponse("dispatcher/drivers_control.html", {
         "request": request,
         "dispatcher": dispatcher,
         "taxipark_id": taxipark_id,
-        "drivers": drivers,
-        "total_drivers": total_drivers,
-        "active_drivers": active_drivers,
-        "inactive_drivers": inactive_drivers,
+        "verifications": verifications,
+        "total_verifications": total_verifications,
+        "pending_verifications": pending_verifications,
+        "approved_verifications": approved_verifications,
+        "rejected_verifications": rejected_verifications,
         "balance": stats["balance"],
-        "current_status": status
+        "current_status": status,
+        "has_filters": status != "all"
     })
 
 @router.get("/profile", response_class=HTMLResponse)
@@ -582,6 +766,36 @@ async def get_dashboard_stats(request: Request, db: Session = Depends(get_db)):
         ]
     }
 
+@router.get("/api/topup-history")
+async def get_topup_history(request: Request, db: Session = Depends(get_db)):
+    """Получить историю пополнений баланса"""
+    taxipark_id = getattr(request.state, 'taxipark_id', None)
+    
+    if not taxipark_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Таксопарк не определен"
+        )
+    
+    from app.services.dispatcher_service import DispatcherService
+    topups = DispatcherService.get_topup_history(db, taxipark_id)
+    
+    return {
+        "topups": [
+            {
+                "id": topup.id,
+                "driver_name": f"{topup.driver.first_name} {topup.driver.last_name}",
+                "driver_phone": topup.driver.phone_number,
+                "amount": topup.amount,
+                "description": topup.description,
+                "reference": topup.reference,
+                "created_at": topup.created_at.isoformat() if topup.created_at else None,
+                "status": topup.status
+            }
+            for topup in topups
+        ]
+    }
+
 @router.post("/api/driver-status")
 async def update_driver_status(request: Request, db: Session = Depends(get_db)):
     dispatcher = getattr(request.state, 'dispatcher', None)
@@ -632,6 +846,10 @@ async def topup_driver_balance(request: Request, db: Session = Depends(get_db)):
         driver_id = data.get('driver_id')
         amount = data.get('amount')
         
+        print(f"🔍 DEBUG: Topup request - driver_id: {driver_id}, amount: {amount}")
+        print(f"🔍 DEBUG: Dispatcher: {dispatcher}")
+        print(f"🔍 DEBUG: Taxipark ID: {taxipark_id}")
+        
         if not driver_id or not amount:
             raise HTTPException(status_code=400, detail="Missing required fields")
         
@@ -639,6 +857,9 @@ async def topup_driver_balance(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Amount must be positive")
         
         from app.models.driver import Driver
+        from app.models.transaction import DriverTransaction
+        from datetime import datetime
+        import uuid
         
         driver = db.query(Driver).filter(
             Driver.id == driver_id,
@@ -649,17 +870,62 @@ async def topup_driver_balance(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=404, detail="Driver not found")
         
         current_balance = driver.balance if driver.balance else 0
-        driver.balance = current_balance + amount
+        new_balance = current_balance + amount
+        
+        # Получаем имя диспетчера безопасно
+        dispatcher_name = "Unknown"
+        if dispatcher:
+            if hasattr(dispatcher, 'username'):
+                dispatcher_name = dispatcher.username
+            elif hasattr(dispatcher, 'name'):
+                dispatcher_name = dispatcher.name
+            elif hasattr(dispatcher, 'first_name'):
+                dispatcher_name = f"{dispatcher.first_name} {dispatcher.last_name if hasattr(dispatcher, 'last_name') else ''}"
+        
+        print(f"🔍 DEBUG: Dispatcher name: {dispatcher_name}")
+        
+        # Создаем транзакцию пополнения
+        transaction = DriverTransaction(
+            driver_id=driver_id,
+            type='topup',
+            amount=amount,
+            description=f'Пополнение баланса диспетчером {dispatcher_name}',
+            status='completed',
+            reference=f'TOPUP_{uuid.uuid4().hex[:8].upper()}',
+            created_at=datetime.now(),
+            updated_at=datetime.now()
+        )
+        
+        # Обновляем баланс водителя
+        driver.balance = new_balance
+        
+        # Сохраняем транзакцию и обновляем водителя
+        db.add(transaction)
         db.commit()
+        
+        print(f"🔍 DEBUG: Balance topup recorded:")
+        print(f"🔍 DEBUG: - Driver: {driver.first_name} {driver.last_name} (ID: {driver_id})")
+        print(f"🔍 DEBUG: - Amount: {amount}")
+        print(f"🔍 DEBUG: - Old balance: {current_balance}")
+        print(f"🔍 DEBUG: - New balance: {new_balance}")
+        print(f"🔍 DEBUG: - Transaction ID: {transaction.id}")
+        print(f"🔍 DEBUG: - Reference: {transaction.reference}")
+        print(f"🔍 DEBUG: - Dispatcher: {dispatcher_name}")
         
         return {
             "success": True, 
             "message": "Balance topped up successfully",
-            "new_balance": driver.balance
+            "new_balance": new_balance,
+            "transaction_id": transaction.id,
+            "reference": transaction.reference
         }
         
     except Exception as e:
         db.rollback()
+        print(f"🔍 DEBUG: Error in topup_driver_balance: {str(e)}")
+        print(f"🔍 DEBUG: Error type: {type(e).__name__}")
+        import traceback
+        print(f"🔍 DEBUG: Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/create-order")

@@ -143,7 +143,7 @@
             return;
         }
         
-        if (confirm(`Пополнить баланс водителя на ${amount} сом?`)) {
+        if (confirm(`Пополнить баланс водителя на ${amount}?`)) {
             fetch('/disp/api/topup-balance', {
                 method: 'POST',
                 headers: {

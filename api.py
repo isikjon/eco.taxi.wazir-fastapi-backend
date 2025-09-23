@@ -369,7 +369,6 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
 
 @app.post("/api/drivers/register")
 async def register_driver(registration: DriverRegistration, db: SessionLocal = Depends(get_db)):
-    """Регистрация нового водителя"""
     try:
         from app.models.driver import Driver
         from app.models.taxipark import TaxiPark
@@ -438,7 +437,6 @@ async def register_driver(registration: DriverRegistration, db: SessionLocal = D
 
 @app.get("/api/drivers/status")
 async def check_driver_status(phoneNumber: str, db: SessionLocal = Depends(get_db)):
-    """Проверить статус водителя"""
     try:
         from app.models.driver import Driver
         
@@ -485,7 +483,6 @@ if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8081, reload=True)
 
 
-# =============== CLIENT API ENDPOINTS ===============
 
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
@@ -499,7 +496,6 @@ client_router = APIRouter(prefix="/api/clients", tags=["client-api"])
 
 @client_router.post("/register")
 async def register_client(client_data: ClientCreate, db: Session = Depends(get_db)):
-    """Регистрация нового клиента"""
     try:
         # Проверяем, существует ли клиент с таким номером
         existing_client = db.query(Client).filter(Client.phone_number == client_data.phone_number).first()
@@ -510,7 +506,6 @@ async def register_client(client_data: ClientCreate, db: Session = Depends(get_d
                 "error": "Клиент с таким номером уже существует"
             }
         
-        # Создаем нового клиента
         new_client = Client(
             first_name=client_data.first_name,
             last_name=client_data.last_name,
@@ -540,9 +535,7 @@ async def register_client(client_data: ClientCreate, db: Session = Depends(get_d
 
 @client_router.post("/login")
 async def login_client(login_data: ClientLogin, db: Session = Depends(get_db)):
-    """Авторизация клиента"""
     try:
-        # Ищем клиента по номеру телефона
         client = db.query(Client).filter(Client.phone_number == login_data.phone_number).first()
         
         if not client:
@@ -551,7 +544,6 @@ async def login_client(login_data: ClientLogin, db: Session = Depends(get_db)):
                 "error": "Клиент не найден"
             }
         
-        # Проверяем статус клиента
         if not client.is_active:
             return {
                 "success": False,
@@ -575,7 +567,6 @@ async def login_client(login_data: ClientLogin, db: Session = Depends(get_db)):
 
 @client_router.get("/status")
 async def get_client_status(phone_number: str, db: Session = Depends(get_db)):
-    """Проверка статуса клиента"""
     try:
         client = db.query(Client).filter(Client.phone_number == phone_number).first()
         
@@ -597,5 +588,3 @@ async def get_client_status(phone_number: str, db: Session = Depends(get_db)):
             "success": False,
             "error": f"Ошибка проверки статуса: {str(e)}"
         }
-
-# =============== END CLIENT API ENDPOINTS ===============

@@ -9,11 +9,32 @@ class DispatcherService:
     
     @staticmethod
     def get_taxipark_balance(db: Session, taxipark_id: int) -> float:
-        """Получить баланс таксопарка"""
-        taxipark = db.query(TaxiPark).filter(TaxiPark.id == taxipark_id).first()
-        if taxipark:
-            return taxipark.balance if hasattr(taxipark, 'balance') else 0.0
-        return 0.0
+        """Получить общий баланс всех водителей таксопарка"""
+        from sqlalchemy import func
+        
+        # Считаем сумму балансов всех водителей в таксопарке
+        total_balance = db.query(func.sum(Driver.balance)).filter(
+            Driver.taxipark_id == taxipark_id
+        ).scalar()
+        
+        # Отладочная информация
+        drivers_with_balance = db.query(Driver).filter(
+            Driver.taxipark_id == taxipark_id
+        ).all()
+        
+        print(f"🔍 DEBUG: Calculating total balance for taxipark {taxipark_id}")
+        individual_balances = []
+        for driver in drivers_with_balance:
+            balance = driver.balance if driver.balance else 0
+            individual_balances.append(balance)
+            print(f"🔍 DEBUG: Driver {driver.first_name} {driver.last_name}: {balance}")
+        
+        calculated_total = sum(individual_balances)
+        print(f"🔍 DEBUG: Individual balances: {individual_balances}")
+        print(f"🔍 DEBUG: SQL sum result: {total_balance}")
+        print(f"🔍 DEBUG: Calculated total: {calculated_total}")
+        
+        return float(total_balance) if total_balance is not None else 0.0
     
     @staticmethod
     def get_drivers_count(db: Session, taxipark_id: int) -> int:
@@ -40,6 +61,54 @@ class DispatcherService:
             "cancelled": cancelled,
             "in_progress": in_progress
         }
+    
+    @staticmethod
+    def get_total_topups_count(db: Session, taxipark_id: int) -> int:
+        """Получить общее количество пополнений баланса"""
+        from app.models.transaction import DriverTransaction
+        
+        # Сначала посмотрим, есть ли вообще транзакции в базе
+        all_transactions_count = db.query(DriverTransaction).count()
+        print(f"🔍 DEBUG: Total transactions in database: {all_transactions_count}")
+        
+        # Посмотрим, какие типы транзакций есть
+        all_types = db.query(DriverTransaction.type).distinct().all()
+        print(f"🔍 DEBUG: All transaction types: {[t[0] for t in all_types]}")
+        
+        # Считаем все транзакции типа 'topup' для водителей данного таксопарка
+        total_topups = db.query(DriverTransaction).join(Driver).filter(
+            Driver.taxipark_id == taxipark_id,
+            DriverTransaction.type == 'topup'
+        ).count()
+        
+        print(f"🔍 DEBUG: Total topups for taxipark {taxipark_id}: {total_topups}")
+        
+        # Если нет пополнений, но есть другие транзакции, покажем их
+        if total_topups == 0 and all_transactions_count > 0:
+            all_taxipark_transactions = db.query(DriverTransaction).join(Driver).filter(
+                Driver.taxipark_id == taxipark_id
+            ).count()
+            print(f"🔍 DEBUG: Total transactions for taxipark {taxipark_id}: {all_taxipark_transactions}")
+        
+        return total_topups
+    
+    @staticmethod
+    def get_topup_history(db: Session, taxipark_id: int, limit: int = 50) -> List:
+        """Получить историю пополнений баланса"""
+        from app.models.transaction import DriverTransaction
+        from sqlalchemy.orm import joinedload
+        
+        # Получаем все пополнения для водителей данного таксопарка
+        topups = db.query(DriverTransaction).join(Driver).options(
+            joinedload(DriverTransaction.driver)
+        ).filter(
+            Driver.taxipark_id == taxipark_id,
+            DriverTransaction.type == 'topup'
+        ).order_by(DriverTransaction.created_at.desc()).limit(limit).all()
+        
+        print(f"🔍 DEBUG: Retrieved {len(topups)} topup transactions for taxipark {taxipark_id}")
+        
+        return topups
     
     @staticmethod
     def get_dispatcher_stats(db: Session, taxipark_id: int) -> dict:

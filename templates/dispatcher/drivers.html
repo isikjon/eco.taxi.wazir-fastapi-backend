@@ -11,16 +11,24 @@
 {% endblock %}
 
 {% block subheader %}
+<style>
+    .main__btn-short {
+        display: flex;
+        align-items: center;
+    }
+</style>
 <div class="main__subheader main__subheader-drivers">
     <div class="main__subheader-add">
         <div class="main__header-search-item">
-            <form action="#" style="background-color: #47484c;">
-                <input type="search" placeholder="Поиск">
-                <button style="padding: 0px;"><img src="/static/dispatcher/img/ico/search.png" alt="search"></button>
+            <form id="search-form" style="background-color: #47484c;">
+                <input type="search" id="search-input" name="search" placeholder="Поиск по Ф.И.О" value="{{ filters.search if filters.search else '' }}">
+                <button type="submit" style="padding: 0px;"><img src="/static/dispatcher/img/ico/search.png" alt="search"></button>
             </form>
         </div>
         <div class="main__subheader-filing" style="display: flex; gap: 10px;">
             <form method="GET" action="/disp/drivers">
+                {% if filters.search %}<input type="hidden" name="search" value="{{ filters.search }}">{% endif %}
+                {% if filters.tariff %}<input type="hidden" name="tariff" value="{{ filters.tariff }}">{% endif %}
                 <select name="status" onchange="this.form.submit()">
                     <option value="all" {% if filters.status == "all" %}selected{% endif %}>Все статусы</option>
                     <option value="active" {% if filters.status == "active" %}selected{% endif %}>Активные</option>
@@ -28,6 +36,7 @@
                 </select>
             </form>
             <form method="GET" action="/disp/drivers">
+                {% if filters.search %}<input type="hidden" name="search" value="{{ filters.search }}">{% endif %}
                 <input type="hidden" name="status" value="{{ filters.status }}">
                 <select name="tariff" onchange="this.form.submit()">
                     <option value="" {% if not filters.tariff %}selected{% endif %}>Все тарифы</option>
@@ -83,7 +92,11 @@
                 {% else %}
                     <tr>
                         <td colspan="6" style="text-align: center; padding: 20px; color: #888;">
-                            Водителей нет
+                            {% if filters.search %}
+                                По запросу "{{ filters.search }}" водителей не найдено
+                            {% else %}
+                                Водителей нет
+                            {% endif %}
                         </td>
                     </tr>
                 {% endif %}
@@ -130,6 +143,93 @@
         url.searchParams.set('page', page);
         window.location.href = url.toString();
     }
+    
+    // Обработка поиска
+    document.addEventListener('DOMContentLoaded', function() {
+        const searchForm = document.getElementById('search-form');
+        const searchInput = document.getElementById('search-input');
+        
+        if (searchForm && searchInput) {
+            // Обработка отправки формы
+            searchForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                const searchValue = searchInput.value.trim();
+                
+                // Строим URL с сохранением текущих фильтров
+                const url = new URL(window.location);
+                url.searchParams.set('page', '1'); // Сбрасываем на первую страницу
+                
+                if (searchValue) {
+                    url.searchParams.set('search', searchValue);
+                } else {
+                    url.searchParams.delete('search');
+                }
+                
+                console.log('🔍 DEBUG: Redirecting to:', url.toString());
+                window.location.href = url.toString();
+            });
+            
+            // Обработка Enter в поле поиска
+            searchInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    console.log('🔍 DEBUG: Enter pressed, submitting form');
+                    searchForm.dispatchEvent(new Event('submit'));
+                }
+            });
+            
+            // Обработка клика по кнопке поиска
+            const searchButton = searchForm.querySelector('button[type="submit"]');
+            if (searchButton) {
+                searchButton.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('🔍 DEBUG: Search button clicked');
+                    searchForm.dispatchEvent(new Event('submit'));
+                });
+            }
+            
+            // Валидация кириллицы
+            function isCyrillic(text) {
+                // Проверяем, что текст содержит только кириллицу, пробелы и дефисы
+                const cyrillicRegex = /^[а-яё\s\-]+$/i;
+                return cyrillicRegex.test(text);
+            }
+            
+            // Автоматический поиск при вводе (с задержкой)
+            let searchTimeout;
+            searchInput.addEventListener('input', function(e) {
+                const searchValue = e.target.value.trim();
+                
+                // Показываем предупреждение для некириллических символов
+                if (searchValue && !isCyrillic(searchValue)) {
+                    e.target.style.borderColor = '#ff6b6b';
+                    e.target.title = 'Используйте только кириллицу (а-я, ё)';
+                } else {
+                    e.target.style.borderColor = '';
+                    e.target.title = '';
+                }
+                
+                clearTimeout(searchTimeout);
+                
+                searchTimeout = setTimeout(function() {
+                    if (searchValue.length >= 1 || searchValue.length === 0) {
+                        console.log('🔍 DEBUG: Auto-search triggered for:', searchValue);
+                        
+                        const url = new URL(window.location);
+                        url.searchParams.set('page', '1');
+                        
+                        if (searchValue) {
+                            url.searchParams.set('search', searchValue);
+                        } else {
+                            url.searchParams.delete('search');
+                        }
+                        
+                        window.location.href = url.toString();
+                    }
+                }, 500); // Задержка 500мс
+            });
+        }
+    });
     
     $(document).ready(function() {
         console.log('Страница водителей загружена');

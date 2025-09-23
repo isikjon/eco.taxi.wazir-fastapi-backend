@@ -855,6 +855,8 @@ function searchLocalAddresses(query) {
         const tariffSelect = document.getElementById('tariff-select');
         if (tariffSelect) {
             tariffSelect.value = tariff;
+            // Блокируем изменение тарифа после выбора водителя
+            tariffSelect.disabled = true;
         }
         
         if (markerA && markerB) {
@@ -874,6 +876,8 @@ function searchLocalAddresses(query) {
         const tariffSelect = document.getElementById('tariff-select');
         if (tariffSelect) {
             tariffSelect.value = '';
+            // Разблокируем селект тарифа при сбросе
+            tariffSelect.disabled = false;
         }
         
         const priceDisplay = document.getElementById('price-display');
@@ -928,6 +932,56 @@ function searchLocalAddresses(query) {
         if (priceDisplay) priceDisplay.textContent = 'Цена: 0 сом';
 }
 
+// Функция маски для телефона
+function initPhoneMask() {
+    const phoneInput = document.getElementById('client-phone');
+    if (!phoneInput) return;
+    
+    phoneInput.addEventListener('input', function(e) {
+        let value = e.target.value.replace(/\D/g, ''); // Убираем все нецифровые символы
+        
+        // Если начинается не с 996, добавляем 996
+        if (value.length > 0 && !value.startsWith('996')) {
+            value = '996' + value;
+        }
+        
+        // Ограничиваем до 14 цифр (996 + 11 цифр)
+        if (value.length > 14) {
+            value = value.substring(0, 14);
+        }
+        
+        // Форматируем в +996 XXX - XXX - XXXX
+        let formatted = '';
+        if (value.length > 0) {
+            formatted = '+996';
+            if (value.length > 3) {
+                formatted += ' ' + value.substring(3, 6);
+            }
+            if (value.length > 6) {
+                formatted += ' - ' + value.substring(6, 9);
+            }
+            if (value.length > 9) {
+                formatted += ' - ' + value.substring(9, 14);
+            }
+        }
+        
+        e.target.value = formatted;
+    });
+    
+    // Обработка клавиш Backspace и Delete
+    phoneInput.addEventListener('keydown', function(e) {
+        if (e.key === 'Backspace' || e.key === 'Delete') {
+            // Разрешаем удаление
+            return true;
+        }
+        
+        // Разрешаем только цифры и служебные клавиши
+        if (!/\d/.test(e.key) && !['Tab', 'Enter', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+            e.preventDefault();
+        }
+    });
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof mapgl !== 'undefined') {
         initMap();
@@ -937,6 +991,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     initDriverSelect();
     initAddressAutocomplete();
+    initPhoneMask();
     updateKyrgyzstanTime();
     setInterval(updateKyrgyzstanTime, 1000);
 });
@@ -1083,8 +1138,8 @@ function drawRouteFromGeometry(geometry) {
                     </div>
                     <div class="main__subheader-filing">
                         <form action="#">
-                            <select name="tariff-select" id="tariff-select">
-                                <option value="" disabled selected>Тариф</option>
+                            <select name="tariff-select" id="tariff-select" title="Тариф автоматически выбирается при выборе водителя">
+                                <option value="" disabled selected>Тариф (автоматически)</option>
                                 <option value="Эконом">Эконом</option>
                                 <option value="Комфорт">Комфорт</option>
                                 <option value="Бизнес">Бизнес</option>
@@ -1094,8 +1149,7 @@ function drawRouteFromGeometry(geometry) {
                     <div class="main__subheader-filing">
                         <form action="#">
                             <select name="payment-select" id="payment-select">
-                                <option value="" disabled selected>Оплата</option>
-                                <option value="Наличные">Наличные</option>
+                                <option value="Наличные" selected>Наличные</option>
                             </select>
                         </form>
                     </div>
@@ -1106,7 +1160,7 @@ function drawRouteFromGeometry(geometry) {
                     <input type="text" placeholder="Имя клиента" id="client-name" class="main__order-input">
                 </div>
                 <div class="main__order-details-item main__order-details-whither">
-                    <input type="text" placeholder="Телефон клиента" id="client-phone" class="main__order-input">
+                    <input type="text" placeholder="+996 XXX - XXX - XXX" id="client-phone" class="main__order-input" maxlength="20">
                 </div>
             </div>
             <div class="main__order-details">
@@ -1195,10 +1249,17 @@ function drawRouteFromGeometry(geometry) {
 
          document.getElementById('driver-select').value = '';
          document.getElementById('tariff-select').value = '';
-         document.getElementById('payment-select').value = '';
+         // Не сбрасываем оплату - "Наличные" всегда активны
+         document.getElementById('payment-select').value = 'Наличные';
          document.getElementById('pickup-address').value = '';
          document.getElementById('destination-address').value = '';
          document.getElementById('order-notes').value = '';
+         
+         // Разблокируем селект тарифа при сбросе формы
+         const tariffSelect = document.getElementById('tariff-select');
+         if (tariffSelect) {
+             tariffSelect.disabled = false;
+         }
          
          if (typeof resetPoints === 'function') {
              resetPoints();

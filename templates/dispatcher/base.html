@@ -5,7 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Диспетчерская - Taxi 2.0{% endblock %}</title>
     <link rel="stylesheet" href="/static/dispatcher/css/main.css">
+    <link rel="icon" type="image/png" sizes="32x32" href="/static/dispatcher/favicon/favicon-32x32.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="/static/dispatcher/favicon/favicon-16x16.png">
+    <link rel="shortcut icon" href="/static/dispatcher/favicon/favicon.ico" type="image/x-icon">
     {% block extra_head %}{% endblock %}
+
 </head>
 <body>
     <div class="wrapper">
@@ -130,9 +134,9 @@
                 <div class="main__header-search">
                     {% block header_search %}{% endblock %}
                     <div class="main__header-search-profile">
-                        <div class="main__header-search-profile-item">
+                        <!-- <div class="main__header-search-profile-item">
                             <a href="#"><img src="/static/dispatcher/img/ico/notif.png" alt="notif"></a>
-                        </div>
+                        </div> -->
                         <div class="main__header-search-profile-item">
                             <a href="/disp/profile"><img src="/static/dispatcher/img/ico/user.png" alt="profile"></a>
                         </div>
@@ -142,11 +146,17 @@
             {% block subheader %}
             <div class="main__subheader">
                 <div class="main__subheader-date">
-                    <form action="#">
-                        <input type="date" name="first-date-form" id="first-date-form" disabled>
-                        <p>-</p>
-                        <input type="date" name="last-date-form" id="last-date-form" disabled>
-                    </form>
+                    <div class="date-filter-container">
+                        <form id="date-filter-form" onsubmit="return applyDateFilter(event)">
+                            <input type="text" name="date_from" id="first-date-form" placeholder="дд.мм.гггг" value="{% if date_from %}{{ date_from }}{% endif %}" maxlength="10">
+                            <span class="date-separator">-</span>
+                            <input type="text" name="date_to" id="last-date-form" placeholder="дд.мм.гггг" value="{% if date_to %}{{ date_to }}{% endif %}" maxlength="10">
+                            <button type="submit" class="date-apply-btn">Применить</button>
+                            {% if has_date_filters %}
+                            <button type="button" onclick="resetDateFilter()" class="date-reset-btn">Сбросить</button>
+                            {% endif %}
+                        </form>
+                    </div>
                 </div>
                 <div class="main__subheader-add">
                     <button><a href="/disp/new-order" title="Нажмите F2 для быстрого перехода">+ Новый (F2)</a></button>
@@ -201,7 +211,203 @@
             if (status && status !== 'all') {
                 url += '&status=' + status;
             }
+            
+            // Сохраняем текущие фильтры по датам
+            const dateFrom = document.getElementById('first-date-form').value;
+            const dateTo = document.getElementById('last-date-form').value;
+            if (dateFrom) url += '&date_from=' + dateFrom;
+            if (dateTo) url += '&date_to=' + dateTo;
+            
             window.location.href = url;
+        }
+        
+        // Функции для работы с календарем
+        window.DateFilter = {
+            // Форматирование даты из дд.мм.гггг в гггг-мм-дд
+            formatDateForAPI: function(dateStr) {
+                if (!dateStr) return '';
+                const parts = dateStr.split('.');
+                if (parts.length === 3) {
+                    return parts[2] + '-' + parts[1].padStart(2, '0') + '-' + parts[0].padStart(2, '0');
+                }
+                return '';
+            },
+            
+            // Валидация даты
+            isValidDate: function(dateStr) {
+                if (!dateStr) return true; // Пустая дата валидна
+                const parts = dateStr.split('.');
+                if (parts.length !== 3) return false;
+                
+                const day = parseInt(parts[0]);
+                const month = parseInt(parts[1]);
+                const year = parseInt(parts[2]);
+                
+                if (day < 1 || day > 31 || month < 1 || month > 12 || year < 1900 || year > 2100) {
+                    return false;
+                }
+                
+                return true;
+            },
+            
+            apply: function(event) {
+                if (event) event.preventDefault();
+                
+                const dateFrom = document.getElementById('first-date-form');
+                const dateTo = document.getElementById('last-date-form');
+                
+                if (!dateFrom || !dateTo) {
+                    console.error('Date filter elements not found');
+                    return false;
+                }
+                
+                const dateFromValue = dateFrom.value.trim();
+                const dateToValue = dateTo.value.trim();
+                
+                // Валидация дат
+                if (dateFromValue && !this.isValidDate(dateFromValue)) {
+                    alert('Неверный формат даты начала. Используйте дд.мм.гггг');
+                    return false;
+                }
+                
+                if (dateToValue && !this.isValidDate(dateToValue)) {
+                    alert('Неверный формат даты окончания. Используйте дд.мм.гггг');
+                    return false;
+                }
+                
+                // Сравнение дат
+                if (dateFromValue && dateToValue) {
+                    const fromFormatted = this.formatDateForAPI(dateFromValue);
+                    const toFormatted = this.formatDateForAPI(dateToValue);
+                    if (fromFormatted > toFormatted) {
+                        alert('Дата начала не может быть больше даты окончания');
+                        return false;
+                    }
+                }
+                
+                let url = '?page=1&per_page=20';
+                
+                // Сохраняем текущий фильтр по статусу
+                const urlParams = new URLSearchParams(window.location.search);
+                const currentStatus = urlParams.get('status');
+                if (currentStatus && currentStatus !== 'all') {
+                    url += '&status=' + currentStatus;
+                }
+                
+                // Добавляем фильтры по датам
+                if (dateFromValue) {
+                    const formattedFrom = this.formatDateForAPI(dateFromValue);
+                    url += '&date_from=' + formattedFrom;
+                    console.log('🔍 DEBUG: dateFromValue:', dateFromValue, '-> formatted:', formattedFrom);
+                }
+                if (dateToValue) {
+                    const formattedTo = this.formatDateForAPI(dateToValue);
+                    url += '&date_to=' + formattedTo;
+                    console.log('🔍 DEBUG: dateToValue:', dateToValue, '-> formatted:', formattedTo);
+                }
+                
+                console.log('🔍 DEBUG: Final URL:', url);
+                window.location.href = url;
+                return false;
+            },
+            
+            reset: function() {
+                const dateFrom = document.getElementById('first-date-form');
+                const dateTo = document.getElementById('last-date-form');
+                
+                if (dateFrom) dateFrom.value = '';
+                if (dateTo) dateTo.value = '';
+                
+                let url = '?page=1&per_page=20';
+                
+                // Сохраняем текущий фильтр по статусу
+                const urlParams = new URLSearchParams(window.location.search);
+                const currentStatus = urlParams.get('status');
+                if (currentStatus && currentStatus !== 'all') {
+                    url += '&status=' + currentStatus;
+                }
+                
+                window.location.href = url;
+            }
+        };
+        
+        // Маска ввода для дат
+        function addDateMask() {
+            const dateInputs = document.querySelectorAll('#first-date-form, #last-date-form');
+            
+            dateInputs.forEach(function(input) {
+                input.addEventListener('input', function(e) {
+                    let value = e.target.value.replace(/\D/g, ''); // Убираем все нецифры
+                    
+                    if (value.length >= 2) {
+                        value = value.substring(0, 2) + '.' + value.substring(2);
+                    }
+                    if (value.length >= 5) {
+                        value = value.substring(0, 5) + '.' + value.substring(5, 9);
+                    }
+                    
+                    e.target.value = value;
+                });
+                
+                input.addEventListener('keydown', function(e) {
+                    // Разрешаем: backspace, delete, tab, escape, enter
+                    if ([8, 9, 27, 13, 46].indexOf(e.keyCode) !== -1 ||
+                        // Разрешаем: Ctrl+A, Ctrl+C, Ctrl+V, Ctrl+X
+                        (e.keyCode === 65 && e.ctrlKey === true) ||
+                        (e.keyCode === 67 && e.ctrlKey === true) ||
+                        (e.keyCode === 86 && e.ctrlKey === true) ||
+                        (e.keyCode === 88 && e.ctrlKey === true)) {
+                        return;
+                    }
+                    // Разрешаем только цифры
+                    if ((e.shiftKey || (e.keyCode < 48 || e.keyCode > 57)) && (e.keyCode < 96 || e.keyCode > 105)) {
+                        e.preventDefault();
+                    }
+                });
+            });
+        }
+        
+        // Функция для конвертации даты из гггг-мм-дд в дд.мм.гггг
+        function formatDateForInput(dateStr) {
+            if (!dateStr) return '';
+            const parts = dateStr.split('-');
+            if (parts.length === 3) {
+                return parts[2] + '.' + parts[1] + '.' + parts[0];
+            }
+            return dateStr;
+        }
+        
+        // Инициализация маски при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            addDateMask();
+            
+            // Устанавливаем значения из URL параметров
+            const urlParams = new URLSearchParams(window.location.search);
+            const dateFrom = urlParams.get('date_from');
+            const dateTo = urlParams.get('date_to');
+            
+            if (dateFrom) {
+                const dateFromInput = document.getElementById('first-date-form');
+                if (dateFromInput) {
+                    dateFromInput.value = formatDateForInput(dateFrom);
+                }
+            }
+            
+            if (dateTo) {
+                const dateToInput = document.getElementById('last-date-form');
+                if (dateToInput) {
+                    dateToInput.value = formatDateForInput(dateTo);
+                }
+            }
+        });
+        
+        // Глобальные функции для совместимости
+        function applyDateFilter(event) {
+            return window.DateFilter.apply(event);
+        }
+        
+        function resetDateFilter() {
+            return window.DateFilter.reset();
         }
         
         // Глобальная функция для перехода на страницу создания заказа по F2
@@ -244,6 +450,90 @@
         .main__subheader-add button.active {
             background-color: #007bff;
             border-color: #007bff;
+        }
+        
+        /* Стили для календаря - изолированные от конфликтов */
+        .date-filter-container {
+            background-color: #47484c !important;
+            border-radius: 5px !important;
+            padding: 8px 15px !important;
+            display: flex !important;
+            align-items: center !important;
+            gap: 10px !important;
+            justify-content: flex-start !important;
+            position: relative !important;
+            z-index: 1 !important;
+            overflow: visible !important;
+        }
+        
+        .date-filter-container form {
+            display: flex !important;
+            align-items: center !important;
+            gap: 10px !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            background: none !important;
+            border: none !important;
+        }
+        
+        .date-filter-container input[type="text"] {
+            background: transparent !important;
+            outline: none !important;
+            border: 1px solid #666 !important;
+            border-radius: 4px !important;
+            color: #fff !important;
+            font-size: 14px !important;
+            padding: 6px 8px !important;
+            width: 100px !important;
+            text-align: center !important;
+        }
+        
+        .date-filter-container input[type="text"]:focus {
+            border-color: #007bff !important;
+            outline: none !important;
+        }
+        
+        .date-filter-container input[type="text"]::placeholder {
+            color: #999 !important;
+            font-size: 12px !important;
+        }
+        
+        .date-separator {
+            margin: 0 !important;
+            color: #fff !important;
+            font-size: 14px !important;
+            text-align: center !important;
+            display: flex !important;
+            justify-content: center !important;
+            align-items: center !important;
+        }
+        
+        .date-apply-btn, .date-reset-btn {
+            padding: 6px 12px !important;
+            border: none !important;
+            border-radius: 4px !important;
+            font-size: 12px !important;
+            cursor: pointer !important;
+            transition: background-color 0.3s !important;
+            white-space: nowrap !important;
+        }
+        
+        .date-apply-btn {
+            background-color: #28a745 !important;
+            color: white !important;
+        }
+        
+        .date-apply-btn:hover {
+            background-color: #218838 !important;
+        }
+        
+        .date-reset-btn {
+            background-color: #dc3545 !important;
+            color: white !important;
+        }
+        
+        .date-reset-btn:hover {
+            background-color: #c82333 !important;
         }
     </style>
     

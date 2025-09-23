@@ -5,6 +5,7 @@
 {% block nav_disp_active %}navbar__links-content-active{% endblock %}
 
 {% block content %}
+
 <style>
     .main__table thead tr th {
         font-size: 13px;
@@ -49,7 +50,7 @@
                 {% for order in orders %}
                 <tr>
                     <td>{{ order.order_number if order.order_number else order.id }}</td>
-                    <td>{{ order.created_at.strftime('%d.%m.%y') if order.created_at else '--' }}</td>
+                    <td>{{ order.created_at.strftime('%d.%m.%Y') if order.created_at else '--' }}</td>
                     <td>{{ order.created_at.strftime('%H:%M') if order.created_at else '--' }}</td>
                     <td class="{% if order.status == 'completed' %}status-free{% elif order.status == 'cancelled' %}status-busy{% else %}status-free{% endif %}">
                         {% if order.status == 'received' %}Получен
@@ -73,8 +74,12 @@
                 {% endfor %}
             {% else %}
                 <tr>
-                    <td colspan="10" style="text-align: center; padding: 20px; color: #888;">
-                        Заказов нет
+                    <td colspan="11" style="text-align: center; padding: 20px; color: #888;">
+                        {% if has_date_filters %}
+                            Заказов за выбранный период не найдено
+                        {% else %}
+                            Заказов нет
+                        {% endif %}
                     </td>
                 </tr>
             {% endif %}
@@ -88,7 +93,7 @@
             <!-- Предыдущая страница -->
             {% if current_page > 1 %}
             <div class="main__table-pagination-prev">
-                <a href="?page={{ current_page - 1 }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}">
+                <a href="?page={{ current_page - 1 }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
                     <button><img src="/static/dispatcher/img/ico/prev.png" alt="prev"></button>
                 </a>
             </div>
@@ -104,7 +109,7 @@
             
             {% if start_page > 1 %}
             <div class="main__table-pagination-item">
-                <a href="?page=1&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}">
+                <a href="?page=1&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
                     <button>1</button>
                 </a>
             </div>
@@ -117,7 +122,7 @@
             
             {% for page_num in range(start_page, end_page + 1) %}
             <div class="main__table-pagination-item {% if page_num == current_page %}main__table-pagination-active{% endif %}">
-                <a href="?page={{ page_num }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}">
+                <a href="?page={{ page_num }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
                     <button>{{ page_num }}</button>
                 </a>
             </div>
@@ -130,7 +135,7 @@
             </div>
             {% endif %}
             <div class="main__table-pagination-item">
-                <a href="?page={{ total_pages }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}">
+                <a href="?page={{ total_pages }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
                     <button>{{ total_pages }}</button>
                 </a>
             </div>
@@ -139,7 +144,7 @@
             <!-- Следующая страница -->
             {% if current_page < total_pages %}
             <div class="main__table-pagination-next">
-                <a href="?page={{ current_page + 1 }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}">
+                <a href="?page={{ current_page + 1 }}&per_page={{ per_page }}{% if current_status %}&status={{ current_status }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">
                     <button><img src="/static/dispatcher/img/ico/next.png" alt="next"></button>
                 </a>
             </div>
@@ -172,6 +177,12 @@ function updateFilters() {
     let url = '?page=1&per_page=' + perPage;
     {% if current_status %}
     url += '&status={{ current_status }}';
+    {% endif %}
+    {% if date_from %}
+    url += '&date_from={{ date_from }}';
+    {% endif %}
+    {% if date_to %}
+    url += '&date_to={{ date_to }}';
     {% endif %}
     
     window.location.href = url;
