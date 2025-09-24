@@ -12,16 +12,9 @@ class AnalyticsService:
     def get_dashboard_stats(db: Session, days: int = 7) -> Dict[str, Any]:
         """Получить статистику для дашборда за указанное количество дней"""
         
-        # Дата начала периода
-        start_date = datetime.now() - timedelta(days=days)
-        
-        # Заказы за период
-        orders_query = db.query(Order).filter(
-            and_(
-                Order.created_at >= start_date,
-                Order.status == "completed"
-            )
-        )
+        # Для dashboard показываем общую статистику за все время
+        # Заказы за все время (все статусы кроме отмененных)
+        orders_query = db.query(Order).filter(Order.status != "cancelled")
         
         completed_orders = orders_query.count()
         total_earnings = orders_query.with_entities(func.sum(Order.price)).scalar() or 0.0
@@ -29,13 +22,8 @@ class AnalyticsService:
         # Водители
         total_drivers = db.query(Driver).filter(Driver.is_active == True).count()
         
-        # Пополнения водителей (симуляция)
-        driver_topups = db.query(Driver).filter(
-            and_(
-                Driver.balance > 0,
-                Driver.updated_at >= start_date
-            )
-        ).count()
+        # Пополнения водителей (симуляция - считаем водителей с балансом > 0)
+        driver_topups = db.query(Driver).filter(Driver.balance > 0).count()
         
         # Суперадмины
         total_superadmins = db.query(SuperAdmin).filter(SuperAdmin.is_active == True).count()

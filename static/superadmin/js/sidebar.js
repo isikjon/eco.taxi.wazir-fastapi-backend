@@ -16,6 +16,12 @@ function setActiveSidebarLink() {
     });
 }
 
+// Функция выхода из системы
+function superadminLogout() {
+    localStorage.removeItem('superadmin_access_token');
+    window.location.href = '/superadmin/login';
+}
+
 // Вызываем функцию при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     setActiveSidebarLink();

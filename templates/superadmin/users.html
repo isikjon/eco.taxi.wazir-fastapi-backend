@@ -1,90 +1,198 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Taxi 2.0 - Клиенты</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/remixicon@3.5.0/fonts/remixicon.css" rel="stylesheet">
-    <style>
-        body { font-family: 'Poppins', sans-serif; }
-    </style>
-</head>
-<body class="bg-gray-50">
-    <div class="flex h-screen">
-        <div class="w-64 bg-white shadow-lg">
-            <div class="p-6">
-                <h1 class="text-2xl font-bold text-[#048A81]">Taxi 2.0</h1>
-                <p class="text-gray-600 text-sm">Панель управления</p>
-            </div>
-            
-            <nav class="mt-6">
-                <a href="/superadmin/dashboard" class="flex items-center px-6 py-3 text-gray-700 hover:text-[#048A81] hover:bg-gray-50">
-                    <i class="ri-dashboard-line mr-3"></i>
-                    Dashboard
-                </a>
-                <a href="/superadmin/taxiparks" class="flex items-center px-6 py-3 text-gray-700 hover:text-[#048A81] hover:bg-gray-50">
-                    <i class="ri-building-line mr-3"></i>
-                    Таксопарки
-                </a>
-                <a href="/superadmin/admins" class="flex items-center px-6 py-3 text-gray-700 hover:text-[#048A81] hover:bg-gray-50">
-                    <i class="ri-user-settings-line mr-3"></i>
-                    Администраторы
-                </a>
-                <a href="/superadmin/drivers" class="flex items-center px-6 py-3 text-gray-700 hover:text-[#048A81] hover:bg-gray-50">
-                    <i class="ri-user-line mr-3"></i>
-                    Водители
-                </a>
-                <a href="/superadmin/users" class="flex items-center px-6 py-3 text-[#048A81] bg-[#048A81]/10 border-r-2 border-[#048A81]">
-                    <i class="ri-group-line mr-3"></i>
-                    Клиенты
-                </a>
-                <a href="/superadmin/analytics" class="flex items-center px-6 py-3 text-gray-700 hover:text-[#048A81] hover:bg-gray-50">
-                    <i class="ri-bar-chart-line mr-3"></i>
-                    Аналитика
-                </a>
-            </nav>
-            
-            <div class="mt-auto p-6">
-                <button onclick="superadminLogout()" class="w-full bg-red-500 text-white py-2 px-4 rounded-lg hover:bg-red-600 transition-colors">
-                    <i class="ri-logout-box-line mr-2"></i>
-                    Выйти
-                </button>
+{% extends "base.html" %}
+
+{% block title %}Taxi 2.0 - Клиенты{% endblock %}
+
+{% block content %}
+<div class="p-8">
+    <div class="mb-8">
+        <h2 class="text-3xl font-bold text-gray-900">Клиенты</h2>
+        <p class="text-gray-600">Управление клиентами системы</p>
+    </div>
+    
+    <div class="table-container" style="padding: 0 !important;">
+        <div class="p-6 border-b">
+            <div class="flex justify-between items-center">
+                <h3 class="text-lg font-semibold text-gray-900">Список клиентов</h3>
+                <div class="flex items-center space-x-4">
+                    <span class="text-sm text-gray-600" id="clients-count">Загрузка...</span>
+                    <button onclick="loadClients()" class="btn-primary">
+                        <i class="ri-refresh-line mr-2"></i>
+                        Обновить
+                    </button>
+                </div>
             </div>
         </div>
         
-        <div class="flex-1 overflow-auto">
-            <div class="p-8">
-                <div class="mb-8">
-                    <h2 class="text-3xl font-bold text-gray-900">Клиенты</h2>
-                    <p class="text-gray-600">Управление клиентами системы</p>
-                </div>
-                
-                <div class="bg-white rounded-lg shadow-sm border p-6">
-                    <div class="text-center py-12">
-                        <i class="ri-group-line text-6xl text-gray-300 mb-4"></i>
-                        <h3 class="text-xl font-semibold text-gray-600 mb-2">Раздел в разработке</h3>
-                        <p class="text-gray-500">Функционал управления клиентами будет добавлен в следующем обновлении</p>
-                    </div>
-                </div>
-            </div>
+        <div class="overflow-x-auto">
+            <table class="min-w-full divide-y divide-gray-200">
+                <thead class="table-header">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Клиент</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Телефон</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Рейтинг</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Поездок</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Потрачено</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Дата регистрации</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="clients-table-body" class="bg-white divide-y divide-gray-200">
+                    <tr>
+                        <td colspan="9" class="px-6 py-12 text-center">
+                            <div class="flex flex-col items-center">
+                                <i class="ri-loader-4-line text-2xl text-gray-400 animate-spin mb-2"></i>
+                                <span class="text-gray-500">Загрузка клиентов...</span>
+                            </div>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
         </div>
     </div>
+</div>
+{% endblock %}
 
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const token = localStorage.getItem('superadmin_access_token');
-            if (!token) {
-                window.location.href = '/superadmin/login';
-                return;
-            }
-        });
-
-        function superadminLogout() {
-            localStorage.removeItem('superadmin_access_token');
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const token = localStorage.getItem('superadmin_access_token');
+        if (!token) {
             window.location.href = '/superadmin/login';
+            return;
         }
-    </script>
-</body>
-</html>
+        loadClients();
+    });
+
+    async function loadClients() {
+        try {
+            const response = await fetch('/superadmin/api/clients', {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('superadmin_access_token')}`
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Ошибка загрузки данных');
+            }
+
+            const data = await response.json();
+            displayClients(data.clients);
+            document.getElementById('clients-count').textContent = `Всего клиентов: ${data.count}`;
+        } catch (error) {
+            console.error('Error loading clients:', error);
+            document.getElementById('clients-table-body').innerHTML = `
+                <tr>
+                    <td colspan="9" class="px-6 py-12 text-center">
+                        <div class="flex flex-col items-center">
+                            <i class="ri-error-warning-line text-2xl text-red-400 mb-2"></i>
+                            <span class="text-red-500">Ошибка загрузки данных</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+    }
+
+    function displayClients(clients) {
+        const tbody = document.getElementById('clients-table-body');
+        
+        if (clients.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" class="px-6 py-12 text-center">
+                        <div class="flex flex-col items-center">
+                            <i class="ri-group-line text-2xl text-gray-400 mb-2"></i>
+                            <span class="text-gray-500">Клиенты не найдены</span>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        tbody.innerHTML = clients.map(client => `
+            <tr class="hover:bg-gray-50">
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        <div class="flex-shrink-0 h-10 w-10">
+                            <div class="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
+                                <i class="ri-user-line text-gray-600"></i>
+                            </div>
+                        </div>
+                        <div class="ml-4">
+                            <div class="text-sm font-medium text-gray-900">
+                                ${client.first_name} ${client.last_name}
+                            </div>
+                        </div>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${client.phone_number}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${client.email || '-'}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <div class="flex items-center">
+                        <i class="ri-star-fill text-yellow-400 mr-1"></i>
+                        <span class="text-sm text-gray-900">${client.rating}</span>
+                    </div>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${client.total_rides}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${client.total_spent.toFixed(2)} руб
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap">
+                    <span class="status-badge ${client.is_active ? 'active' : 'inactive'}">
+                        ${client.is_active ? 'Активен' : 'Неактивен'}
+                    </span>
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    ${client.created_at ? new Date(client.created_at).toLocaleDateString('ru-RU') : '-'}
+                </td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div class="flex space-x-2">
+                        <button onclick="toggleClientStatus(${client.id}, ${client.is_active})" 
+                                class="text-${client.is_active ? 'red' : 'green'}-600 hover:text-${client.is_active ? 'red' : 'green'}-900">
+                            <i class="ri-${client.is_active ? 'user-unfollow' : 'user-follow'}-line"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function toggleClientStatus(clientId, currentStatus) {
+        const action = currentStatus ? 'заблокировать' : 'разблокировать';
+        
+        if (!confirm(`Вы уверены, что хотите ${action} этого клиента?`)) {
+            return;
+        }
+
+        try {
+            const response = await fetch(`/superadmin/api/clients/${clientId}/toggle-status`, {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('superadmin_access_token')}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error('Ошибка при изменении статуса');
+            }
+
+            const result = await response.json();
+            alert(result.message);
+            loadClients();
+        } catch (error) {
+            console.error('Error toggling client status:', error);
+            alert('Ошибка при изменении статуса клиента');
+        }
+    }
+</script>
+{% endblock %}

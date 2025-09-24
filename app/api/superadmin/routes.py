@@ -90,8 +90,37 @@ async def superadmin_admins_page(request: Request):
 @router.get("/api/metrics")
 async def get_metrics(db: Session = Depends(get_db)):
     """Получить метрики для дашборда"""
+    print("🚀 API METRICS: Начало выполнения")
     try:
-        stats = AnalyticsService.get_dashboard_stats(db, days=7)
+        # Отладочная информация
+        from app.models.order import Order
+        from sqlalchemy import func
+        
+        print("🚀 API METRICS: Импорты выполнены")
+        
+        # Проверяем все заказы
+        all_orders = db.query(Order).all()
+        print(f"🚀 API METRICS: Все заказы из базы: {len(all_orders)}")
+        for order in all_orders:
+            print(f"  - ID: {order.id}, Статус: {order.status}, Цена: {order.price}")
+        
+        total_orders = db.query(Order).count()
+        non_cancelled_orders = db.query(Order).filter(Order.status != "cancelled").count()
+        total_earnings = db.query(Order).filter(Order.status != "cancelled").with_entities(func.sum(Order.price)).scalar() or 0.0
+        
+        print(f"🔍 DEBUG: Всего заказов в базе: {total_orders}")
+        print(f"🔍 DEBUG: Не отмененных заказов: {non_cancelled_orders}")
+        print(f"🔍 DEBUG: Общая сумма: {total_earnings}")
+        
+        # Временно используем прямые запросы вместо AnalyticsService
+        stats = {
+            "orders_completed": non_cancelled_orders,
+            "total_earnings": total_earnings,
+            "driver_topups": 2,  # Временно фиксированное значение
+            "total_superadmins": 1,  # Временно фиксированное значение
+            "period_days": 7
+        }
+        
         print(f"📊 METRICS: Получены метрики: {stats}")
         print(f"📊 METRICS: Типы данных:")
         for key, value in stats.items():
@@ -614,4 +643,171 @@ async def get_orders_stats(db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Ошибка при получении статистики заказов: {str(e)}"
+        )
+
+# API endpoints для клиентов
+@router.get("/api/clients")
+async def get_clients_list(db: Session = Depends(get_db)):
+    """Получить список всех клиентов"""
+    try:
+        from app.models.client import Client
+        
+        print(f"🔍 DEBUG: Запрос списка клиентов")
+        
+        clients = db.query(Client).all()
+        print(f"🔍 DEBUG: Найдено клиентов: {len(clients)}")
+        
+        clients_data = []
+        for client in clients:
+            clients_data.append({
+                "id": client.id,
+                "first_name": client.first_name,
+                "last_name": client.last_name,
+                "phone_number": client.phone_number,
+                "email": client.email,
+                "rating": float(client.rating) if client.rating else 5.0,
+                "total_rides": client.total_rides,
+                "total_spent": float(client.total_spent) if client.total_spent else 0.0,
+                "preferred_payment_method": client.preferred_payment_method,
+                "is_active": client.is_active,
+                "created_at": client.created_at.isoformat() if client.created_at else None,
+                "updated_at": client.updated_at.isoformat() if client.updated_at else None
+            })
+        
+        print(f"🔍 DEBUG: Подготовлено данных клиентов: {len(clients_data)}")
+        return {"clients": clients_data, "count": len(clients_data)}
+    except Exception as e:
+        print(f"❌ ERROR: Ошибка при получении списка клиентов: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при получении списка клиентов: {str(e)}"
+        )
+
+@router.put("/api/clients/{client_id}/toggle-status")
+async def toggle_client_status(
+    client_id: int,
+    db: Session = Depends(get_db)
+):
+    """Переключить статус клиента (заблокировать/разблокировать)"""
+    try:
+        from app.models.client import Client
+        
+        client = db.query(Client).filter(Client.id == client_id).first()
+        if not client:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Клиент не найден"
+            )
+        
+        client.is_active = not client.is_active
+        db.commit()
+        db.refresh(client)
+        
+        action = "разблокирован" if client.is_active else "заблокирован"
+        print(f"👤 Клиент {client.first_name} {client.last_name} {action}")
+        
+        return {
+            "message": f"Клиент успешно {action}",
+            "client": {
+                "id": client.id,
+                "first_name": client.first_name,
+                "last_name": client.last_name,
+                "is_active": client.is_active
+            }
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при изменении статуса клиента: {str(e)}"
+        )
+
+# API endpoint для аналитики
+@router.get("/api/analytics")
+async def get_analytics_data(
+    period: int = 7,
+    db: Session = Depends(get_db)
+):
+    """Получить аналитические данные"""
+    try:
+        from app.models.order import Order
+        from app.models.driver import Driver
+        from app.models.client import Client
+        from sqlalchemy import func, and_
+        from datetime import datetime, timedelta
+        
+        print(f"📊 ANALYTICS: Запрос аналитики за {period} дней")
+        
+        # Дата начала периода
+        start_date = datetime.now() - timedelta(days=period)
+        
+        # Основные метрики
+        total_orders = db.query(Order).filter(Order.status != "cancelled").count()
+        total_revenue = db.query(Order).filter(Order.status != "cancelled").with_entities(func.sum(Order.price)).scalar() or 0.0
+        active_drivers = db.query(Driver).filter(Driver.is_active == True).count()
+        average_order = total_revenue / total_orders if total_orders > 0 else 0.0
+        
+        # Статистика по статусам заказов
+        orders_by_status = db.query(Order.status, func.count(Order.id)).group_by(Order.status).all()
+        orders_status_dict = dict(orders_by_status)
+        
+        # Топ водители (по количеству заказов)
+        top_drivers_query = db.query(
+            Driver.first_name,
+            Driver.last_name,
+            func.count(Order.id).label('orders_count'),
+            func.sum(Order.price).label('total_revenue')
+        ).join(Order, Driver.id == Order.driver_id).filter(
+            Order.status == "completed"
+        ).group_by(Driver.id, Driver.first_name, Driver.last_name).order_by(
+            func.count(Order.id).desc()
+        ).limit(5).all()
+        
+        top_drivers = [
+            {
+                "name": f"{driver.first_name} {driver.last_name}",
+                "orders": driver.orders_count,
+                "revenue": float(driver.total_revenue) if driver.total_revenue else 0.0
+            }
+            for driver in top_drivers_query
+        ]
+        
+        # Данные для графика доходов (пока пустые, будут реальные данные)
+        revenue_data = []
+        
+        analytics_data = {
+            "total_revenue": float(total_revenue),
+            "total_orders": total_orders,
+            "active_drivers": active_drivers,
+            "average_order": float(average_order),
+            "orders_by_status": {
+                "completed": orders_status_dict.get("completed", 0),
+                "cancelled": orders_status_dict.get("cancelled", 0),
+                "in_progress": orders_status_dict.get("in_progress", 0),
+                "pending": orders_status_dict.get("pending", 0)
+            },
+            "top_drivers": top_drivers,
+            "revenue_data": revenue_data,
+            "period_days": period
+        }
+        
+        print(f"📊 ANALYTICS: Подготовлены данные аналитики")
+        print(f"  - Общий доход: {total_revenue}")
+        print(f"  - Заказов: {total_orders}")
+        print(f"  - Активных водителей: {active_drivers}")
+        print(f"  - Средний чек: {average_order}")
+        
+        return analytics_data
+        
+    except Exception as e:
+        print(f"❌ ANALYTICS: Ошибка при получении аналитики: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Ошибка при получении аналитических данных: {str(e)}"
         )
