@@ -22,6 +22,9 @@ class Settings(BaseSettings):
 
     ADMIN_LOGIN: str = "Alexander"
     ADMIN_PASSWORD: str = "123"
+    
+    # Firebase Cloud Messaging
+    FCM_SERVICE_ACCOUNT_PATH: str = "firebase-service-account.json"
 
     class Config:
         env_file = ".env"

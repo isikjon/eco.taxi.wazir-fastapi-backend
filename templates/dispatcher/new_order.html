@@ -36,16 +36,20 @@ function initMap() {
         center: osh,
         zoom: 13,
         key: '50ee04cc-386a-4c4a-9fb7-dc3573eceb7e',
-        locale: 'ru_KG'
+        locale: 'ru_KG',
+        enableTrackResize: true  // Автоматический ресайз карты
     });
     
     
     map.on('click', function(event) {
         // Получаем координаты клика и проверяем их точность
         const coords = event.lngLat;
-        console.log('Клик по карте в координатах:', coords);
-        console.log('Тип события:', event.type);
-        console.log('Позиция клика на экране:', event.point);
+        console.log('🎯 Клик по карте в координатах:', coords);
+        console.log('📍 Позиция клика на экране:', event.point);
+        console.log('📏 Размер контейнера карты:', {
+            width: document.getElementById('map').offsetWidth,
+            height: document.getElementById('map').offsetHeight
+        });
         
         if (!markerA) {
             setPointA(coords);
@@ -69,9 +73,57 @@ function initMap() {
         console.log('Глобальный Directions API создан');
     }
 
+    // Принудительно обновляем размер карты для корректного позиционирования
+    setTimeout(() => {
+        if (map && typeof map.invalidateSize === 'function') {
+            map.invalidateSize();
+            console.log('✅ Размер карты обновлен через invalidateSize()');
+        }
+    }, 100);
+
     initDriverSelect();
     console.log('2ГИС карта инициализирована');
+    
+    // Автоматически тестируем точность кликов после инициализации
+    setTimeout(() => {
+        testMapClickAccuracy();
+    }, 500);
 }
+
+// Функция для ручного обновления размера карты (можно вызвать из консоли)
+function refreshMapSize() {
+    if (map && typeof map.invalidateSize === 'function') {
+        map.invalidateSize();
+        console.log('✅ Размер карты обновлен вручную');
+        return true;
+    } else {
+        console.error('❌ Карта не инициализирована или метод invalidateSize недоступен');
+        return false;
+    }
+}
+
+// Делаем функцию доступной глобально для тестирования
+window.refreshMapSize = refreshMapSize;
+
+// Функция для тестирования точности кликов
+function testMapClickAccuracy() {
+    if (!map) {
+        console.error('❌ Карта не инициализирована');
+        return;
+    }
+    
+    console.log('🧪 Тестирование точности кликов карты...');
+    console.log('📏 Размер контейнера:', {
+        width: document.getElementById('map').offsetWidth,
+        height: document.getElementById('map').offsetHeight
+    });
+    console.log('🗺️ Центр карты:', map.getCenter());
+    console.log('🔍 Зум карты:', map.getZoom());
+    console.log('💡 Для тестирования кликните на карту и проверьте координаты в консоли');
+}
+
+// Делаем функцию доступной глобально
+window.testMapClickAccuracy = testMapClickAccuracy;
 
 function setPointA(coordinates) {
     console.log('setPointA вызвана с координатами:', coordinates);
@@ -1131,7 +1183,7 @@ function drawRouteFromGeometry(geometry) {
                             <select name="driver-select" id="driver-select">
                                 <option value="" disabled selected>Водители</option>
                                  {% for driver in drivers %}
-                                 <option value="{{ driver.id }}" data-tariff="{{ driver.tariff }}">{{ driver.first_name }} {{ driver.last_name }} - {{ driver.phone }}</option>
+                                 <option value="{{ driver.id }}" data-tariff="{{ driver.tariff }}">{{ driver.first_name }} {{ driver.last_name }} - {{ driver.phone_number }}</option>
                                  {% endfor %}
                             </select>
                         </form>
@@ -1155,6 +1207,9 @@ function drawRouteFromGeometry(geometry) {
                     </div>
                 </div>
             </div>
+            {% if not drivers %}
+            <p style="color: #ff6b6b; margin-top: 10px; font-size: 14px;" id="no-drivers-message">Нет активных водителей на линии</p>
+            {% endif %}
             <div class="main__order-details">
                 <div class="main__order-details-item main__order-details-where">
                     <input type="text" placeholder="Имя клиента" id="client-name" class="main__order-input">
@@ -1210,7 +1265,9 @@ function drawRouteFromGeometry(geometry) {
             </div>
         </div>
         <div class="main__order-map">
-            <div class="main__order-map-item" id="map" style="max-width: 620px;"></div>
+            <!-- Контейнер карты содержит ТОЛЬКО карту -->
+            <div class="main__order-map-item" id="map" style="max-width: 620px; height: 338px;"></div>
+            <!-- Настройки карты вынесены отдельно -->
             <div class="main__order-map-settings">
                 <div class="main__order-map-settings">
                     <button class="main__btn" onclick="resetPoints()">Сбросить точки</button>
@@ -1468,6 +1525,8 @@ html {
      width: 100%;
      height: 338px;
      border-radius: 5px;
+     position: relative;
+     overflow: hidden;
  }
 
  .tariff-active {
@@ -1482,4 +1541,91 @@ html {
      font-size: 12px;
  }
 </style>
+
+<script>
+    let websocket = null;
+    
+    function connectWebSocket() {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/ws/orders/dispatcher`;
+        
+        websocket = new WebSocket(wsUrl);
+        
+        websocket.onopen = function(event) {
+            console.log('WebSocket подключен');
+        };
+        
+        websocket.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            handleWebSocketMessage(data);
+        };
+        
+        websocket.onclose = function(event) {
+            console.log('WebSocket отключен, переподключение через 5 секунд...');
+            setTimeout(connectWebSocket, 5000);
+        };
+        
+        websocket.onerror = function(error) {
+            console.error('WebSocket ошибка:', error);
+        };
+    }
+    
+    function handleWebSocketMessage(data) {
+        if (data.type === 'driver_status_changed') {
+            updateDriverList();
+        }
+    }
+    
+    async function updateDriverList() {
+        try {
+            const response = await fetch('/disp/api/online-drivers');
+            const result = await response.json();
+            
+            if (result.success) {
+                const driverSelect = document.getElementById('driver-select');
+                const currentValue = driverSelect.value;
+                
+                driverSelect.innerHTML = '<option value="" disabled selected>Водители</option>';
+                
+                if (result.drivers.length === 0) {
+                    let noDriversMsg = document.getElementById('no-drivers-message');
+                    if (!noDriversMsg) {
+                        noDriversMsg = document.createElement('p');
+                        noDriversMsg.id = 'no-drivers-message';
+                        noDriversMsg.style.cssText = 'color: #ff6b6b; margin-top: 10px; font-size: 14px;';
+                        noDriversMsg.textContent = 'Нет активных водителей на линии';
+                        
+                        const subheader = document.querySelector('.main__order-subheader');
+                        if (subheader) {
+                            subheader.parentNode.insertBefore(noDriversMsg, subheader.nextSibling);
+                        }
+                    }
+                } else {
+                    const existingMsg = document.getElementById('no-drivers-message');
+                    if (existingMsg) {
+                        existingMsg.remove();
+                    }
+                    
+                    result.drivers.forEach(driver => {
+                        const option = document.createElement('option');
+                        option.value = driver.id;
+                        option.setAttribute('data-tariff', driver.tariff);
+                        option.textContent = `${driver.first_name} ${driver.last_name} - ${driver.phone_number}`;
+                        driverSelect.appendChild(option);
+                    });
+                    
+                    if (currentValue && result.drivers.find(d => d.id == currentValue)) {
+                        driverSelect.value = currentValue;
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Ошибка обновления списка водителей:', error);
+        }
+    }
+    
+    document.addEventListener('DOMContentLoaded', function() {
+        connectWebSocket();
+    });
+</script>
 {% endblock %}

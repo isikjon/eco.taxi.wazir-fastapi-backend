@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, WebSocket
 from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +10,7 @@ from app.api.superadmin.routes import router as superadmin_router
 from app.api.dispatcher.routes import router as dispatcher_router
 from app.api.driver.routes import router as driver_router
 from app.websocket.routes import router as websocket_router
+from app.websocket.driver_websocket import driver_websocket_endpoint
 from app.middleware.dispatcher_auth import check_dispatcher_auth
 
 # Импортируем API endpoints для мобильного приложения
@@ -18,6 +19,14 @@ from app.api.client import client_router
 from api_balance import router as balance_router
 from api_driver_profile import router as driver_profile_router
 from api_photo_control import router as photo_control_router
+
+# Инициализируем FCM сервис при запуске
+print("🔍 [MAIN] Инициализация FCM сервиса...")
+try:
+    from app.services.fcm_service import fcm_service
+    print("✅ [MAIN] FCM сервис инициализирован")
+except Exception as e:
+    print(f"❌ [MAIN] Ошибка инициализации FCM сервиса: {e}")
 
 init_database()
 
@@ -92,11 +101,25 @@ for route in websocket_router.routes:
 
 app.include_router(websocket_router)
 
+# Добавляем WebSocket endpoint для водителей
+@app.websocket("/ws/orders/driver/{driver_id}")
+async def websocket_driver_endpoint(websocket: WebSocket, driver_id: str):
+    await driver_websocket_endpoint(websocket, driver_id)
+
 # Подключаем API endpoints для мобильного приложения
+print("    🔗 {'GET'} /api/parks -> get_parks")
 app.add_api_route("/api/parks", get_parks, methods=["GET"], tags=["mobile-api"])
+
+print("    🔗 {'POST'} /api/sms/send -> send_sms_code")
 app.add_api_route("/api/sms/send", send_sms_code, methods=["POST"], tags=["mobile-api"])
+
+print("    🔗 {'POST'} /api/drivers/login -> login_driver")
 app.add_api_route("/api/drivers/login", login_driver, methods=["POST"], tags=["mobile-api"])
+
+print("    🔗 {'POST'} /api/drivers/register -> register_driver")
 app.add_api_route("/api/drivers/register", register_driver, methods=["POST"], tags=["mobile-api"])
+
+print("    🔗 {'GET'} /api/drivers/status -> check_driver_status")
 app.add_api_route("/api/drivers/status", check_driver_status, methods=["GET"], tags=["mobile-api"])
 
 # Подключаем API endpoints для баланса и транзакций
@@ -119,6 +142,12 @@ for route in client_router.routes:
 
 app.include_router(client_router, tags=["client-api"])
 
+# Подключаем API endpoints из api.py
+app.get("/api/parks")(get_parks)
+app.post("/api/sms/send")(send_sms_code)
+app.post("/api/drivers/login")(login_driver)
+app.post("/api/drivers/register")(register_driver)
+app.get("/api/drivers/status")(check_driver_status)
 
 print("✅ All routers included successfully")
 
@@ -159,7 +188,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
-        host="127.0.0.1",
+        host="0.0.0.0",
         port=8081,
         reload=True,
         log_level="info"

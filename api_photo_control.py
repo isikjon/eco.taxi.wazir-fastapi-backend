@@ -60,8 +60,14 @@ async def submit_photos_for_verification(
     Отправка фотографий на проверку
     """
     try:
+        # Нормализуем номер телефона (убираем пробелы, добавляем плюс если нет)
+        normalized_phone = driver_phone.strip()
+        if not normalized_phone.startswith('+'):
+            normalized_phone = '+' + normalized_phone
+        print(f"📸 Нормализованный номер для отправки: '{normalized_phone}'")
+        
         # Проверяем существование водителя
-        driver = db.query(Driver).filter(Driver.phone_number == driver_phone).first()
+        driver = db.query(Driver).filter(Driver.phone_number == normalized_phone).first()
         if not driver:
             raise HTTPException(status_code=404, detail="Водитель не найден")
         
@@ -134,7 +140,7 @@ async def submit_photos_for_verification(
         db.commit()
         db.refresh(new_verification)
         
-        print(f"📸 Получена заявка на фотоконтроль от {driver_phone}")
+        print(f"📸 Получена заявка на фотоконтроль от {normalized_phone}")
         print(f"📸 Фотографии: {list(photos_data.keys())}")
         print(f"📸 Пути к файлам: {photos_data}")
         
@@ -158,13 +164,29 @@ async def get_verification_status(
     Получение статуса проверки фотографий
     """
     try:
+        print(f"🔍 Запрос статуса для телефона: {driver_phone}")
+        
+        # Нормализуем номер телефона (убираем пробелы, добавляем плюс если нет)
+        normalized_phone = driver_phone.strip()
+        if not normalized_phone.startswith('+'):
+            normalized_phone = '+' + normalized_phone
+        print(f"🔍 Нормализованный номер: '{normalized_phone}'")
+        
         # Находим водителя
-        driver = db.query(Driver).filter(Driver.phone_number == driver_phone).first()
+        driver = db.query(Driver).filter(Driver.phone_number == normalized_phone).first()
         if not driver:
+            print(f"❌ Водитель не найден для телефона: {normalized_phone}")
+            # Попробуем найти всех водителей для отладки
+            all_drivers = db.query(Driver).all()
+            print(f"🔍 Все водители в БД:")
+            for d in all_drivers:
+                print(f"  - ID: {d.id}, Phone: '{d.phone_number}', Name: {d.first_name} {d.last_name}")
             return {
                 "status": "not_started",
                 "rejection_reason": None
             }
+        
+        print(f"✅ Водитель найден: {driver.first_name} {driver.last_name}, ID: {driver.id}")
         
         # Ищем последнюю заявку водителя из БД
         latest_verification = db.query(PhotoVerification).filter(
@@ -172,10 +194,13 @@ async def get_verification_status(
         ).order_by(desc(PhotoVerification.created_at)).first()
         
         if not latest_verification:
+            print(f"📋 Заявок не найдено, статус водителя: {driver.photo_verification_status}")
             return {
                 "status": driver.photo_verification_status,
                 "rejection_reason": None
             }
+        
+        print(f"📋 Найдена заявка ID: {latest_verification.id}, статус: {latest_verification.status}")
         
         return {
             "status": latest_verification.status,
@@ -233,19 +258,31 @@ async def approve_or_reject_verification(
     Одобрение или отклонение заявки на фотоконтроль
     """
     try:
+        print(f"🔍 [PHOTO] Получен запрос на обработку заявки")
+        print(f"🔍 [PHOTO] ID заявки: {approval_data.verification_id}")
+        print(f"🔍 [PHOTO] Действие: {approval_data.action}")
+        print(f"🔍 [PHOTO] Причина: {approval_data.reason}")
+        
         verification_id = approval_data.verification_id
         
         # Находим заявку в БД
         verification = db.query(PhotoVerification).filter(PhotoVerification.id == verification_id).first()
         
         if not verification:
+            print(f"❌ [PHOTO] Заявка не найдена: {verification_id}")
             raise HTTPException(status_code=404, detail="Заявка не найдена")
         
+        print(f"🔍 [PHOTO] Найдена заявка: {verification.id}")
+        print(f"🔍 [PHOTO] Текущий статус: {verification.status}")
+        print(f"🔍 [PHOTO] Номер водителя: {verification.driver.phone_number if verification.driver else 'Не найден'}")
+        
         if verification.status != "pending":
+            print(f"❌ [PHOTO] Заявка уже обработана: {verification.status}")
             raise HTTPException(status_code=400, detail="Заявка уже обработана")
         
         # Обновляем статус
         if approval_data.action == "approve":
+            print(f"🔍 [PHOTO] Одобряем заявку...")
             verification.status = "approved"
             verification.rejection_reason = None
             verification.processed_at = datetime.now()
@@ -253,12 +290,15 @@ async def approve_or_reject_verification(
             # Обновляем статус водителя в БД
             driver = verification.driver
             if driver:
+                print(f"🔍 [PHOTO] Обновляем статус водителя: {driver.first_name} {driver.last_name}")
                 driver.is_active = True
                 driver.photo_verification_status = "approved"
+                print(f"🔍 [PHOTO] FCM токен водителя: {driver.fcm_token[:20] if driver.fcm_token else 'None'}...")
             
             message = "Заявка одобрена"
             
         elif approval_data.action == "reject":
+            print(f"🔍 [PHOTO] Отклоняем заявку...")
             verification.status = "rejected"
             verification.rejection_reason = approval_data.reason or "Не указана причина"
             verification.processed_at = datetime.now()
@@ -266,19 +306,46 @@ async def approve_or_reject_verification(
             # Обновляем статус водителя в БД
             driver = verification.driver
             if driver:
+                print(f"🔍 [PHOTO] Обновляем статус водителя: {driver.first_name} {driver.last_name}")
                 driver.is_active = False
                 driver.photo_verification_status = "rejected"
+                print(f"🔍 [PHOTO] FCM токен водителя: {driver.fcm_token[:20] if driver.fcm_token else 'None'}...")
             
             message = "Заявка отклонена"
             
         else:
+            print(f"❌ [PHOTO] Неверное действие: {approval_data.action}")
             raise HTTPException(status_code=400, detail="Неверное действие")
         
+        print(f"🔍 [PHOTO] Сохраняем изменения в БД...")
         db.commit()
+        print(f"✅ [PHOTO] Изменения сохранены")
         
-        print(f"✅ Заявка #{verification_id} {approval_data.action}: {driver.first_name} {driver.last_name}")
+        print(f"✅ [PHOTO] Заявка #{verification_id} {approval_data.action}: {driver.first_name} {driver.last_name}")
         if approval_data.reason:
-            print(f"📝 Причина: {approval_data.reason}")
+            print(f"📝 [PHOTO] Причина: {approval_data.reason}")
+        
+        # Отправляем push-уведомление
+        print(f"🔍 [PHOTO] Проверяем FCM токен водителя...")
+        if driver.fcm_token:
+            print(f"🔍 [PHOTO] FCM токен найден, отправляем уведомление...")
+            from app.services.fcm_service import fcm_service
+            driver_name = f"{driver.first_name} {driver.last_name}"
+            
+            if approval_data.action == "approve":
+                print(f"🔍 [PHOTO] Отправляем уведомление об одобрении...")
+                success = fcm_service.send_photo_verification_approved(driver.fcm_token, driver_name)
+                print(f"🔍 [PHOTO] Результат отправки уведомления об одобрении: {success}")
+            elif approval_data.action == "reject":
+                print(f"🔍 [PHOTO] Отправляем уведомление об отклонении...")
+                success = fcm_service.send_photo_verification_rejected(
+                    driver.fcm_token, 
+                    driver_name, 
+                    approval_data.reason or "Не указана причина"
+                )
+                print(f"🔍 [PHOTO] Результат отправки уведомления об отклонении: {success}")
+        else:
+            print("⚠️ [PHOTO] FCM токен водителя отсутствует")
         
         return {
             "success": True,
@@ -288,7 +355,10 @@ async def approve_or_reject_verification(
         }
         
     except Exception as e:
-        print(f"❌ Ошибка обработки заявки: {e}")
+        print(f"❌ [PHOTO] Ошибка обработки заявки: {e}")
+        print(f"❌ [PHOTO] Тип ошибки: {type(e).__name__}")
+        import traceback
+        print(f"❌ [PHOTO] Stack trace: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Ошибка обработки заявки: {str(e)}")
 
 @router.get("/verification/{verification_id}")
@@ -388,6 +458,52 @@ async def upload_single_photo(
     except Exception as e:
         print(f"❌ Ошибка загрузки файла: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка загрузки файла: {str(e)}")
+
+@router.post("/reset-status", response_model=dict)
+async def reset_driver_verification_status(
+    driver_phone: str = Form(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Сброс статуса фотоконтроля для конкретного водителя
+    """
+    try:
+        # Нормализуем номер телефона (убираем пробелы, добавляем плюс если нет)
+        normalized_phone = driver_phone.strip()
+        if not normalized_phone.startswith('+'):
+            normalized_phone = '+' + normalized_phone
+        print(f"🔄 Нормализованный номер для сброса: '{normalized_phone}'")
+        
+        # Находим водителя
+        driver = db.query(Driver).filter(Driver.phone_number == normalized_phone).first()
+        if not driver:
+            raise HTTPException(status_code=404, detail="Водитель не найден")
+        
+        # Сбрасываем статус водителя
+        driver.photo_verification_status = "not_started"
+        driver.is_active = False
+        
+        # Удаляем все заявки этого водителя
+        verifications = db.query(PhotoVerification).filter(
+            PhotoVerification.driver_id == driver.id
+        ).all()
+        
+        for verification in verifications:
+            db.delete(verification)
+        
+        db.commit()
+        
+        print(f"🔄 Сброшен статус фотоконтроля для {normalized_phone}")
+        
+        return {
+            "success": True,
+            "message": f"Статус фотоконтроля сброшен для {normalized_phone}",
+            "driver_phone": normalized_phone
+        }
+        
+    except Exception as e:
+        print(f"❌ Ошибка сброса статуса: {e}")
+        raise HTTPException(status_code=500, detail=f"Ошибка сброса статуса: {str(e)}")
 
 @router.delete("/clear-all", response_model=dict)
 async def clear_all_verifications(db: Session = Depends(get_db)):

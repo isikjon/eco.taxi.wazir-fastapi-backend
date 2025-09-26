@@ -158,6 +158,64 @@ async def handle_websocket_message(message: dict, user_id: str, user_type: str, 
                 "message": "Местоположение обновлено"
             }, user_id)
     
+    elif message_type == "driver_status_update":
+        # Обновление статуса водителя
+        driver_id = message.get("driver_id")
+        status = message.get("status")
+        timestamp = message.get("timestamp")
+        
+        if driver_id and status:
+            try:
+                from app.models.driver import Driver
+                from datetime import datetime
+                
+                from app.database.session import SessionLocal
+                db = SessionLocal()
+                
+                try:
+                    driver = db.query(Driver).filter(Driver.id == driver_id).first()
+                    
+                    if driver:
+                        old_status = driver.online_status
+                        driver.online_status = status
+                        if status == 'online':
+                            driver.last_online_at = datetime.now()
+                        
+                        db.commit()
+                        
+                        await websocket_manager.send_to_taxipark({
+                            "type": "driver_status_changed",
+                            "driver_id": driver_id,
+                            "driver_name": f"{driver.first_name} {driver.last_name}",
+                            "old_status": old_status,
+                            "new_status": status,
+                            "timestamp": timestamp or datetime.now().isoformat()
+                        }, taxipark_id, exclude_user=user_id)
+                        
+                        await websocket_manager.send_personal_message({
+                            "type": "status_update_confirmed",
+                            "driver_id": driver_id,
+                            "status": status,
+                            "message": "Статус водителя обновлен"
+                        }, user_id)
+                        
+                        print(f"✅ Статус водителя {driver_id} обновлен: {old_status} → {status}")
+                    else:
+                        await websocket_manager.send_personal_message({
+                            "type": "error",
+                            "message": f"Водитель {driver_id} не найден"
+                        }, user_id)
+                        
+                finally:
+                    db.close()
+                    
+            except Exception as e:
+                print(f"❌ Ошибка обновления статуса водителя: {e}")
+                await websocket_manager.send_personal_message({
+                    "type": "error",
+                    "message": f"Ошибка обновления статуса: {str(e)}"
+                }, user_id)
+    
     else:
         # Неизвестный тип сообщения
         await websocket_manager.send_personal_message({

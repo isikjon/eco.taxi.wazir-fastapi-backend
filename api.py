@@ -1,7 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
+from fastapi import HTTPException, Depends, Request
 from pydantic import BaseModel
 from typing import Optional, List
 import sqlite3
@@ -11,43 +8,12 @@ import uuid
 from datetime import datetime
 import os
 
-# Импорт роутеров
-from app.api.auth.routes import router as auth_router
-from app.api.dispatcher.routes import router as dispatcher_router  
-from app.api.superadmin.routes import router as superadmin_router
 from app.database.session import get_db, SessionLocal
-from app.middleware.dispatcher_auth import check_dispatcher_auth
-
-app = FastAPI(title="Taxi Driver Registration API", version="1.0.0")
-
-# CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # В продакшене указать конкретные домены
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Dispatcher authentication middleware
-app.middleware("http")(check_dispatcher_auth)
-
-# Настройка статических файлов
-app.mount("/static", StaticFiles(directory="static"), name="static")
-
-# Настройка шаблонов
-templates = Jinja2Templates(directory="templates")
-
-# Подключение роутеров
-app.include_router(auth_router)
-app.include_router(dispatcher_router)  
-app.include_router(superadmin_router)
 
 # Путь к базе данных
 DB_PATH = "taxi_admin.db"
 
 # API для обновления статуса заказа водителем
-@app.put("/api/orders/{order_id}/status")
 async def update_order_status_by_driver(order_id: int, request: Request):
     """Обновить статус заказа водителем"""
     try:
@@ -131,7 +97,6 @@ async def update_order_status_by_driver(order_id: int, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 # События запуска и остановки приложения
-@app.on_event("startup")
 async def startup_event():
     """Инициализация при запуске приложения"""
     try:
@@ -194,34 +159,32 @@ def create_database():
 
 # Функция нормализации номера телефона
 def normalize_phone_number(phone_number):
-    """Нормализует номер телефона к единому формату +996XXXXXXXXX для поиска в БД"""
+    """Нормализует номер телефона к единому формату +996XXXXXXXXXX для поиска в БД"""
     if not phone_number:
         return None
     
     # Извлекаем только цифры из номера
     digits_only = ''.join(filter(str.isdigit, phone_number))
     
-    # Если номер начинается с 996, добавляем +
-    if digits_only.startswith('996'):
-        return f"+{digits_only}"
+    # Определяем основные цифры номера
+    if len(digits_only) >= 10:
+        if digits_only.startswith('996'):
+            # Номер с кодом страны 996 - берем все цифры после 996
+            main_digits = digits_only[3:]  # Берем все цифры после 996
+        else:
+            # Берем последние 10 цифр, если их достаточно
+            main_digits = digits_only[-10:] if len(digits_only) >= 10 else digits_only[-9:]
+    else:
+        return None  # Не можем нормализовать
     
-    # Если номер начинается с 9 (без 996), добавляем +996
-    if digits_only.startswith('9') and len(digits_only) == 9:
-        return f"+996{digits_only}"
-    
-    # Если номер уже содержит 996 в начале, просто добавляем +
-    if len(digits_only) >= 12 and digits_only.startswith('996'):
-        return f"+{digits_only}"
-    
-    return phone_number
+    # Возвращаем в едином формате БД: +996XXXXXXXXXX
+    return f"+996{main_digits}"
 
 # API endpoints
 
-@app.get("/")
 async def root():
     return {"message": "Taxi Driver Registration API", "version": "1.0.0"}
 
-@app.get("/api/parks")
 async def get_parks(db: SessionLocal = Depends(get_db)):
     """Получить список всех таксопарков"""
     try:
@@ -249,7 +212,6 @@ async def get_parks(db: SessionLocal = Depends(get_db)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-@app.post("/api/sms/send")
 async def send_sms_code(request: SmsRequest):
     """Отправить SMS код (в тестовом режиме всегда возвращает успех)"""
     try:
@@ -279,7 +241,6 @@ async def send_sms_code(request: SmsRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"SMS sending error: {str(e)}")
 
-@app.post("/api/drivers/login")
 async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db)):
     """Авторизация водителя по номеру телефона и SMS коду"""
     try:
@@ -367,7 +328,6 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Login error: {str(e)}")
 
-@app.post("/api/drivers/register")
 async def register_driver(registration: DriverRegistration, db: SessionLocal = Depends(get_db)):
     try:
         from app.models.driver import Driver
@@ -435,7 +395,6 @@ async def register_driver(registration: DriverRegistration, db: SessionLocal = D
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Registration error: {str(e)}")
 
-@app.get("/api/drivers/status")
 async def check_driver_status(phoneNumber: str, db: SessionLocal = Depends(get_db)):
     try:
         from app.models.driver import Driver
@@ -478,113 +437,4 @@ async def check_driver_status(phoneNumber: str, db: SessionLocal = Depends(get_d
         print(f"Error in check_driver_status: {e}")
         raise HTTPException(status_code=500, detail=f"Status check error: {str(e)}")
 
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8081, reload=True)
 
-
-
-from fastapi import APIRouter, HTTPException, Depends
-from sqlalchemy.orm import Session
-from app.database.session import get_db
-from app.models.client import Client
-from app.schemas.client import ClientCreate, ClientLogin
-import random
-import string
-
-client_router = APIRouter(prefix="/api/clients", tags=["client-api"])
-
-@client_router.post("/register")
-async def register_client(client_data: ClientCreate, db: Session = Depends(get_db)):
-    try:
-        # Проверяем, существует ли клиент с таким номером
-        existing_client = db.query(Client).filter(Client.phone_number == client_data.phone_number).first()
-        
-        if existing_client:
-            return {
-                "success": False,
-                "error": "Клиент с таким номером уже существует"
-            }
-        
-        new_client = Client(
-            first_name=client_data.first_name,
-            last_name=client_data.last_name,
-            phone_number=client_data.phone_number,
-            email=client_data.email,
-            preferred_payment_method=client_data.preferred_payment_method or "cash"
-        )
-        
-        db.add(new_client)
-        db.commit()
-        db.refresh(new_client)
-        
-        return {
-            "success": True,
-            "data": {
-                "client": new_client.to_dict(),
-                "message": "Клиент успешно зарегистрирован"
-            }
-        }
-        
-    except Exception as e:
-        db.rollback()
-        return {
-            "success": False,
-            "error": f"Ошибка регистрации: {str(e)}"
-        }
-
-@client_router.post("/login")
-async def login_client(login_data: ClientLogin, db: Session = Depends(get_db)):
-    try:
-        client = db.query(Client).filter(Client.phone_number == login_data.phone_number).first()
-        
-        if not client:
-            return {
-                "success": False,
-                "error": "Клиент не найден"
-            }
-        
-        if not client.is_active:
-            return {
-                "success": False,
-                "error": "blocked",
-                "message": "Ваш аккаунт заблокирован. Обратитесь в поддержку."
-            }
-        
-        return {
-            "success": True,
-            "data": {
-                "client": client.to_dict(),
-                "isNewUser": False
-            }
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Ошибка авторизации: {str(e)}"
-        }
-
-@client_router.get("/status")
-async def get_client_status(phone_number: str, db: Session = Depends(get_db)):
-    try:
-        client = db.query(Client).filter(Client.phone_number == phone_number).first()
-        
-        if not client:
-            return {
-                "success": False,
-                "error": "Клиент не найден"
-            }
-        
-        return {
-            "success": True,
-            "data": {
-                "client": client.to_dict()
-            }
-        }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Ошибка проверки статуса: {str(e)}"
-        }

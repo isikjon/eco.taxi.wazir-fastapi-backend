@@ -14,6 +14,15 @@
 {% endblock %}
 
 {% block subheader %}
+<style>
+    .main__btn-short {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 0 auto;
+        text-align: center;
+    }
+</style>
 <div class="main__subheader main__subheader-drivers">
     <div class="main__subheader-add">
         <!-- <div class="main__header-search-item">
@@ -74,8 +83,10 @@
                     <button class="main__btn-short" onclick="showRejectModal({{ verification.id }})">Отклонить</button>
                 {% elif verification.status == 'approved' %}
                     <button class="main__btn-green" disabled>Одобрено</button>
+                    <button class="main__btn-short" onclick="resetDriverStatus('{{ verification.driver.phone_number }}')" style="background-color: #ff9800; color: white;">Сбросить</button>
                 {% elif verification.status == 'rejected' %}
                     <button class="main__btn-short" disabled>Отклонено</button>
+                    <button class="main__btn-short" onclick="resetDriverStatus('{{ verification.driver.phone_number }}')" style="background-color: #ff9800; color: white;">Сбросить</button>
                 {% endif %}
             </div>
         </div>
@@ -544,6 +555,35 @@
         console.log('🔍 DEBUG: Redirecting to:', currentUrl.toString());
         
         window.location.href = currentUrl.toString();
+    }
+
+    // Функция сброса статуса водителя
+    async function resetDriverStatus(driverPhone) {
+        if (!confirm(`Сбросить статус фотоконтроля для ${driverPhone}? Это удалит все заявки и позволит водителю пройти проверку заново.`)) {
+            return;
+        }
+        
+        try {
+            const formData = new FormData();
+            formData.append('driver_phone', driverPhone);
+            
+            const response = await fetch('/api/photo-control/reset-status', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                alert(`Статус фотоконтроля сброшен для ${driverPhone}`);
+                window.location.reload();
+            } else {
+                alert('Ошибка при сбросе статуса');
+            }
+        } catch (error) {
+            console.error('Ошибка сброса статуса:', error);
+            alert('Ошибка при сбросе статуса');
+        }
     }
 </script>
 {% endblock %}

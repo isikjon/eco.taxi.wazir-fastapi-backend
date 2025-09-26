@@ -511,10 +511,11 @@ async def dispatch_new_order(request: Request, db: Session = Depends(get_db)):
     import random
     import pytz
     
-    # Получаем активных водителей
+    # Получаем только онлайн водителей
     drivers = db.query(Driver).filter(
         Driver.taxipark_id == taxipark_id,
-        Driver.is_active == True
+        Driver.is_active == True,
+        Driver.online_status == 'online'
     ).all()
     
     # Получаем последние заказы с загруженными водителями
@@ -653,6 +654,7 @@ async def dispatch_photo_control(request: Request, db: Session = Depends(get_db)
     
     from app.models.driver import Driver
     from app.models.photo_verification import PhotoVerification
+    from app.models.taxipark import TaxiPark
     from app.services.dispatcher_service import DispatcherService
     
     # Обрабатываем undefined или пустое значение
@@ -689,9 +691,13 @@ async def dispatch_photo_control(request: Request, db: Session = Depends(get_db)
     
     print(f"🔍 DEBUG: Stats - Total: {total_verifications}, Pending: {pending_verifications}, Approved: {approved_verifications}, Rejected: {rejected_verifications}")
     
+    # Получаем информацию о таксопарке
+    taxipark = db.query(TaxiPark).filter(TaxiPark.id == taxipark_id).first()
+    
     return templates.TemplateResponse("dispatcher/drivers_control.html", {
         "request": request,
         "dispatcher": dispatcher,
+        "taxipark": taxipark,
         "taxipark_id": taxipark_id,
         "verifications": verifications,
         "total_verifications": total_verifications,
@@ -833,6 +839,48 @@ async def update_driver_status(request: Request, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
+@router.get("/api/online-drivers")
+async def get_online_drivers_for_dispatcher(request: Request, db: Session = Depends(get_db)):
+    dispatcher = getattr(request.state, 'dispatcher', None)
+    taxipark_id = getattr(request.state, 'taxipark_id', None)
+    
+    if not dispatcher:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        from app.models.driver import Driver
+        from datetime import datetime, timedelta
+        
+        # Автоматически отключаем водителей которые не активны более 2 минут
+        cutoff_time = datetime.now() - timedelta(minutes=2)
+        inactive_drivers = db.query(Driver).filter(
+            Driver.taxipark_id == taxipark_id,
+            Driver.online_status == 'online',
+            Driver.last_online_at < cutoff_time
+        ).all()
+        
+        for driver in inactive_drivers:
+            driver.online_status = 'offline'
+            print(f"🚫 Автоматически отключен водитель {driver.id} - нет активности")
+        
+        if inactive_drivers:
+            db.commit()
+        
+        # Получаем только активных онлайн водителей
+        online_drivers = db.query(Driver).filter(
+            Driver.taxipark_id == taxipark_id,
+            Driver.is_active == True,
+            Driver.online_status == 'online'
+        ).all()
+        
+        return {
+            "success": True,
+            "drivers": [driver.to_dict() for driver in online_drivers]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @router.post("/api/topup-balance")
 async def topup_driver_balance(request: Request, db: Session = Depends(get_db)):
     dispatcher = getattr(request.state, 'dispatcher', None)
@@ -911,6 +959,34 @@ async def topup_driver_balance(request: Request, db: Session = Depends(get_db)):
         print(f"🔍 DEBUG: - Transaction ID: {transaction.id}")
         print(f"🔍 DEBUG: - Reference: {transaction.reference}")
         print(f"🔍 DEBUG: - Dispatcher: {dispatcher_name}")
+        
+        # Отправляем push-уведомление
+        print(f"🔍 [BALANCE] Проверяем FCM токен водителя...")
+        print(f"🔍 [BALANCE] FCM токен водителя: {driver.fcm_token[:20] if driver.fcm_token else 'НЕТ'}...")
+        
+        if driver.fcm_token:
+            print(f"🔍 [BALANCE] FCM токен найден, отправляем уведомление...")
+            try:
+                from app.services.fcm_service import fcm_service
+                print(f"🔍 [BALANCE] FCM сервис импортирован успешно")
+                driver_name = f"{driver.first_name} {driver.last_name}"
+                
+                print(f"🔍 [BALANCE] Отправляем уведомление о пополнении баланса...")
+                print(f"🔍 [BALANCE] Параметры: токен={driver.fcm_token[:20]}..., имя={driver_name}, сумма={amount}, баланс={new_balance}")
+                
+                success = fcm_service.send_balance_topup(
+                    driver.fcm_token,
+                    driver_name,
+                    amount,
+                    new_balance
+                )
+                print(f"🔍 [BALANCE] Результат отправки уведомления: {success}")
+            except Exception as e:
+                print(f"❌ [BALANCE] Ошибка при отправке уведомления: {e}")
+                import traceback
+                print(f"❌ [BALANCE] Stack trace: {traceback.format_exc()}")
+        else:
+            print("⚠️ [BALANCE] FCM токен водителя отсутствует")
         
         return {
             "success": True, 

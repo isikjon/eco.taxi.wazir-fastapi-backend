@@ -11,25 +11,25 @@ import json
 router = APIRouter()
 
 def normalize_phone_number(phone_number):
-    """Нормализует номер телефона к единому формату +996XXXXXXXXX для поиска в БД"""
+    """Нормализует номер телефона к единому формату +996XXXXXXXXXX для поиска в БД"""
     if not phone_number:
         return None
     
     # Извлекаем только цифры из номера
     digits_only = ''.join(filter(str.isdigit, phone_number))
     
-    # Определяем основные 9 цифр номера
-    if len(digits_only) >= 9:
-        if digits_only.startswith('996') and len(digits_only) >= 12:
-            # Номер с кодом страны 996
-            main_digits = digits_only[3:12]  # Берем 9 цифр после 996
+    # Определяем основные цифры номера
+    if len(digits_only) >= 10:
+        if digits_only.startswith('996'):
+            # Номер с кодом страны 996 - берем все цифры после 996
+            main_digits = digits_only[3:]  # Берем все цифры после 996
         else:
-            # Берем последние 9 цифр
-            main_digits = digits_only[-9:]
+            # Берем последние 10 цифр, если их достаточно
+            main_digits = digits_only[-10:] if len(digits_only) >= 10 else digits_only[-9:]
     else:
         return None  # Не можем нормализовать
     
-    # Возвращаем в едином формате БД: +996XXXXXXXXX
+    # Возвращаем в едином формате БД: +996XXXXXXXXXX
     return f"+996{main_digits}"
 
 @router.get("/api/drivers/balance")

@@ -26,6 +26,13 @@ class Driver(Base):
     # Статус фотоверификации: not_started, pending, approved, rejected
     photo_verification_status = Column(String, default='not_started', nullable=False)
     
+    # FCM токен для push-уведомлений
+    fcm_token = Column(String, nullable=True)
+    
+    # Статус водителя на линии: offline, online
+    online_status = Column(String, default='offline', nullable=False)
+    last_online_at = Column(DateTime(timezone=True), nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -55,6 +62,9 @@ class Driver(Base):
             "tariff": self.tariff,
             "is_active": self.is_active,
             "photo_verification_status": self.photo_verification_status,
+            "fcm_token": self.fcm_token,
+            "online_status": self.online_status,
+            "last_online_at": self.last_online_at.isoformat() if self.last_online_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }

@@ -21,22 +21,26 @@ def get_db_connection():
     return conn
 
 def normalize_phone_number(phone_number):
-    """Нормализует номер телефона к единому формату +996XXXXXXXXX"""
+    """Нормализует номер телефона к единому формату +996XXXXXXXXXX для поиска в БД"""
     if not phone_number:
         return None
     
+    # Извлекаем только цифры из номера
     digits_only = ''.join(filter(str.isdigit, phone_number))
     
-    if digits_only.startswith('996'):
-        return f"+{digits_only}"
+    # Определяем основные цифры номера
+    if len(digits_only) >= 10:
+        if digits_only.startswith('996'):
+            # Номер с кодом страны 996 - берем все цифры после 996
+            main_digits = digits_only[3:]  # Берем все цифры после 996
+        else:
+            # Берем последние 10 цифр, если их достаточно
+            main_digits = digits_only[-10:] if len(digits_only) >= 10 else digits_only[-9:]
+    else:
+        return None  # Не можем нормализовать
     
-    if digits_only.startswith('9') and len(digits_only) == 9:
-        return f"+996{digits_only}"
-    
-    if len(digits_only) >= 12 and digits_only.startswith('996'):
-        return f"+{digits_only}"
-    
-    return phone_number
+    # Возвращаем в едином формате БД: +996XXXXXXXXXX
+    return f"+996{main_digits}"
 
 @client_router.post("/register")
 async def register_client(client_data: ClientCreate, db: Session = Depends(get_db)):
