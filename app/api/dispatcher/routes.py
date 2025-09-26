@@ -819,6 +819,7 @@ async def update_driver_status(request: Request, db: Session = Depends(get_db)):
             raise HTTPException(status_code=400, detail="Missing required fields")
         
         from app.models.driver import Driver
+        from datetime import datetime
         
         # Проверяем, что водитель принадлежит к тому же таксопарку
         driver = db.query(Driver).filter(
@@ -831,6 +832,11 @@ async def update_driver_status(request: Request, db: Session = Depends(get_db)):
         
         # Обновляем статус
         driver.is_active = is_active
+        if is_active:
+            driver.online_status = 'online'
+            driver.last_online_at = datetime.now()
+        else:
+            driver.online_status = 'offline'
         db.commit()
         
         return {"success": True, "message": "Driver status updated successfully"}

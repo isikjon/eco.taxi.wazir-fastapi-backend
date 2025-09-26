@@ -5,9 +5,9 @@ from app.websocket.manager import websocket_manager
 from app.core.security import verify_token
 import json
 
-router = APIRouter(prefix="/ws", tags=["websocket"])
+router = APIRouter(tags=["websocket"])
 
-@router.websocket("/orders")
+@router.websocket("/ws/orders")
 async def websocket_orders_endpoint(websocket: WebSocket, token: str = None):
     """WebSocket endpoint для заказов"""
     try:
@@ -223,7 +223,7 @@ async def handle_websocket_message(message: dict, user_id: str, user_type: str, 
             "message": f"Unknown message type: {message_type}"
         }, user_id)
 
-@router.websocket("/orders/dispatcher")
+@router.websocket("/ws/orders/dispatcher")
 async def websocket_dispatcher_endpoint(websocket: WebSocket, token: str = None):
     """WebSocket endpoint для диспетчеров"""
     try:
@@ -305,7 +305,7 @@ async def handle_dispatcher_message(message: dict, dispatcher_id: str, taxipark_
             "message": f"Unknown message type: {message_type}"
         }, f"dispatcher_{dispatcher_id}")
 
-@router.get("/status")
+@router.get("/ws/status")
 async def websocket_status():
     """Получить статус WebSocket соединений"""
     return {
