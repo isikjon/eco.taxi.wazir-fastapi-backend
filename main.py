@@ -101,10 +101,7 @@ for route in websocket_router.routes:
 
 app.include_router(websocket_router)
 
-# Добавляем WebSocket endpoint для водителей
-@app.websocket("/ws/orders/driver/{driver_id}")
-async def websocket_driver_endpoint(websocket: WebSocket, driver_id: str):
-    await driver_websocket_endpoint(websocket, driver_id)
+# WebSocket endpoints уже подключены через websocket_router
 
 # Подключаем API endpoints для мобильного приложения
 print("    🔗 {'GET'} /api/parks -> get_parks")
