@@ -58,7 +58,7 @@
                 <h4>Контроль</h4>
                 <nav>
                     <ul>
-                        <li><a href="/disp/photo-control">Фото контроль</a></li>
+                        <li><a href="/disp/photo-control">Фотоконтроль</a></li>
                     </ul>
                 </nav>
             </div>
@@ -127,7 +127,12 @@
                     <ul>
                         <li><a href="/disp/drivers">Водитель</a></li>
                         <li><a href="/disp/cars">Автомобиль</a></li>
-                        <li><a href="/disp/photo-control">Фото контроль</a></li>
+                        <li>
+                            <a href="/disp/photo-control" style="position: relative; display: inline-block; padding-right: 20px;">
+                                Фотоконтроль
+                                <span id="photo-control-counter" class="notification-badge">0</span>
+                            </a>
+                        </li>
                         <li><a href="/disp/balance-topup">Пополнение</a></li>
                     </ul>
                 </div>
@@ -177,6 +182,9 @@
                         </button>
                         {% endfor %}
                     {% endif %}
+                    {% if has_any_filters %}
+                    <button onclick="resetAllFilters()" class="main__btn-short">Сбросить</button>
+                    {% endif %}
                 </div>
                 <div class="main__subheader-balance">
                     <img src="/static/dispatcher/img/ico/balance.png" alt="balance">
@@ -189,6 +197,28 @@
     </div>
     <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
     <script src="/static/dispatcher/js/script.js"></script>
+    
+    <style>
+        .notification-badge {
+            background-color: #ff4444;
+            color: white;
+            border-radius: 100%;
+            padding: 5px 7px;
+            font-size: 12px;
+            font-weight: bold;
+            text-align: center;
+            display: flex;
+            position: absolute;
+            top: 4px;
+            right: 8px;
+            transform: translate(50%, -50%);
+            white-space: nowrap;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            margin: 0 auto;
+        }
+    </style>
     <script>
         const taxiparkName = localStorage.getItem('taxipark_name');
         if (taxiparkName) {
@@ -410,6 +440,54 @@
             return window.DateFilter.reset();
         }
         
+        function resetAllFilters() {
+            // Сбрасываем фильтр по статусу
+            const currentUrl = new URL(window.location);
+            currentUrl.searchParams.delete('status');
+            
+            // Сбрасываем фильтры по датам
+            currentUrl.searchParams.delete('date_from');
+            currentUrl.searchParams.delete('date_to');
+            
+            // Сбрасываем страницу на первую
+            currentUrl.searchParams.set('page', '1');
+            
+            // Переходим на очищенную страницу
+            window.location.href = currentUrl.toString();
+        }
+        
+        // Функция для обновления счетчика фотоконтроля
+        async function updatePhotoControlCounter() {
+            try {
+                const response = await fetch('/disp/api/photo-control-pending-count');
+                const data = await response.json();
+                
+                if (data.success) {
+                    const counter = document.getElementById('photo-control-counter');
+                    if (counter) {
+                        const count = data.pending_count;
+                        counter.textContent = count;
+                        // Счетчик всегда показывается, даже если count = 0
+                    }
+                }
+            } catch (error) {
+                console.error('Ошибка обновления счетчика фотоконтроля:', error);
+                // При ошибке показываем 0
+                const counter = document.getElementById('photo-control-counter');
+                if (counter) {
+                    counter.textContent = '0';
+                }
+            }
+        }
+        
+        // Обновляем счетчик при загрузке страницы
+        document.addEventListener('DOMContentLoaded', function() {
+            updatePhotoControlCounter();
+            
+            // Обновляем счетчик каждые 5 секунд
+            setInterval(updatePhotoControlCounter, 5000);
+        });
+        
         // Глобальная функция для перехода на страницу создания заказа по F2
         document.addEventListener('keydown', function(event) {
             if (event.key === 'F2') {
@@ -456,7 +534,7 @@
         .date-filter-container {
             background-color: #47484c !important;
             border-radius: 5px !important;
-            padding: 8px 15px !important;
+            padding: 8px 0px !important;
             display: flex !important;
             align-items: center !important;
             gap: 10px !important;

@@ -5,11 +5,22 @@ import json
 async def driver_websocket_endpoint(websocket: WebSocket, driver_id: str):
     """WebSocket endpoint для водителей"""
     try:
+        # Получаем данные водителя из базы данных
+        from app.database.session import SessionLocal
+        from app.models.driver import Driver
+        
+        db = SessionLocal()
+        try:
+            driver = db.query(Driver).filter(Driver.id == int(driver_id)).first()
+            taxipark_id = driver.taxipark_id if driver else None
+        finally:
+            db.close()
+        
         await websocket_manager.connect(
             websocket=websocket,
             user_id=f"driver_{driver_id}",
             user_type="driver",
-            taxipark_id=None  # Будет получен из данных водителя
+            taxipark_id=taxipark_id
         )
         
         print(f"✅ [WebSocket] Водитель {driver_id} подключен")

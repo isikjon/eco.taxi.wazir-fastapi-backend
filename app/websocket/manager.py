@@ -47,19 +47,30 @@ class WebSocketManager:
     
     async def send_personal_message(self, message: dict, user_id: str):
         """Отправить сообщение конкретному пользователю"""
+        print(f"🔍 [WebSocket Manager] send_personal_message called with user_id: {user_id}")
+        print(f"🔍 [WebSocket Manager] active_connections keys: {list(self.active_connections.keys())}")
+        
         if user_id in self.active_connections:
             try:
-                await self.active_connections[user_id].send_text(json.dumps(message))
+                message_json = json.dumps(message)
+                print(f"🔍 [WebSocket Manager] Sending message to {user_id}: {message_json}")
+                await self.active_connections[user_id].send_text(message_json)
                 return True
             except Exception as e:
-                print(f"Ошибка отправки сообщения пользователю {user_id}: {e}")
+                print(f"❌ [WebSocket Manager] Ошибка отправки сообщения пользователю {user_id}: {e}")
                 self.disconnect(user_id)
                 return False
+        else:
+            print(f"❌ [WebSocket Manager] User {user_id} not found in active connections")
         return False
     
     async def send_to_taxipark(self, message: dict, taxipark_id: int, exclude_user: str = None):
         """Отправить сообщение всем пользователям таксопарка"""
-        if taxipark_id not in self.taxipark_connections:
+        print(f"🔍 [WebSocket Manager] send_to_taxipark called with taxipark_id: {taxipark_id} (type: {type(taxipark_id)})")
+        print(f"🔍 [WebSocket Manager] taxipark_connections keys: {list(self.taxipark_connections.keys())}")
+        
+        if taxipark_id is None or taxipark_id not in self.taxipark_connections:
+            print(f"❌ [WebSocket Manager] Taxipark {taxipark_id} not found in connections")
             return
         
         sent_count = 0

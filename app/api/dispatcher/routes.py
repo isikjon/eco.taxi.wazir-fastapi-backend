@@ -155,6 +155,12 @@ async def dispatch_dashboard(
     # Проверяем, есть ли активные фильтры по датам
     has_date_filters = bool(date_from or date_to)
     
+    # Проверяем, есть ли активные фильтры по статусу
+    has_status_filter = bool(status and status != 'all')
+    
+    # Проверяем, есть ли любые активные фильтры
+    has_any_filters = has_date_filters or has_status_filter
+    
     return templates.TemplateResponse("dispatcher/index.html", {
         "request": request,
         "dispatcher": dispatcher,
@@ -171,7 +177,9 @@ async def dispatch_dashboard(
         "statuses": statuses,
         "date_from": date_from,
         "date_to": date_to,
-        "has_date_filters": has_date_filters
+        "has_date_filters": has_date_filters,
+        "has_status_filter": has_status_filter,
+        "has_any_filters": has_any_filters
     })
 
 @router.get("/analytics", response_class=HTMLResponse)
@@ -511,11 +519,22 @@ async def dispatch_new_order(request: Request, db: Session = Depends(get_db)):
     import random
     import pytz
     
-    # Получаем только онлайн водителей
+    # Получаем только свободных онлайн водителей (не выполняющих заказы)
+    from app.models.order import Order
+    
+    # Получаем ID водителей, которые в данный момент выполняют заказы
+    busy_driver_ids = db.query(Order.driver_id).filter(
+        Order.taxipark_id == taxipark_id,
+        Order.driver_id.isnot(None),
+        Order.status.in_(['accepted', 'navigating_to_a', 'arrived_at_a', 'navigating_to_b', 'in_progress'])
+    ).subquery()
+    
+    # Получаем только свободных онлайн водителей
     drivers = db.query(Driver).filter(
         Driver.taxipark_id == taxipark_id,
         Driver.is_active == True,
-        Driver.online_status == 'online'
+        Driver.online_status == 'online',
+        ~Driver.id.in_(busy_driver_ids)
     ).all()
     
     # Получаем последние заказы с загруженными водителями
@@ -872,11 +891,22 @@ async def get_online_drivers_for_dispatcher(request: Request, db: Session = Depe
         if inactive_drivers:
             db.commit()
         
-        # Получаем только активных онлайн водителей
+        # Получаем только активных онлайн водителей, которые НЕ выполняют заказы
+        from app.models.order import Order
+        
+        # Получаем ID водителей, которые в данный момент выполняют заказы
+        busy_driver_ids = db.query(Order.driver_id).filter(
+            Order.taxipark_id == taxipark_id,
+            Order.driver_id.isnot(None),
+            Order.status.in_(['accepted', 'navigating_to_a', 'arrived_at_a', 'navigating_to_b', 'in_progress'])
+        ).subquery()
+        
+        # Получаем только свободных онлайн водителей
         online_drivers = db.query(Driver).filter(
             Driver.taxipark_id == taxipark_id,
             Driver.is_active == True,
-            Driver.online_status == 'online'
+            Driver.online_status == 'online',
+            ~Driver.id.in_(busy_driver_ids)
         ).all()
         
         return {
@@ -885,6 +915,35 @@ async def get_online_drivers_for_dispatcher(request: Request, db: Session = Depe
         }
         
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/api/photo-control-pending-count")
+async def get_photo_control_pending_count(request: Request, db: Session = Depends(get_db)):
+    """
+    Получение количества водителей ожидающих фотоконтроля для диспетчерской
+    """
+    dispatcher = getattr(request.state, 'dispatcher', None)
+    taxipark_id = getattr(request.state, 'taxipark_id', None)
+    
+    if not dispatcher:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    
+    try:
+        from app.models.photo_verification import PhotoVerification
+        
+        # Подсчитываем количество водителей ожидающих фотоконтроля
+        pending_count = db.query(PhotoVerification).filter(
+            PhotoVerification.taxipark_id == taxipark_id,
+            PhotoVerification.status == 'pending'
+        ).count()
+        
+        return {
+            "success": True,
+            "pending_count": pending_count
+        }
+        
+    except Exception as e:
+        print(f"❌ Ошибка получения количества ожидающих фотоконтроля: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/api/topup-balance")
@@ -1033,8 +1092,9 @@ async def create_order(request: Request, db: Session = Depends(get_db)):
         import random
         
         # Проверяем водителя
+        driver_id = int(data['driver_id'])  # Убеждаемся, что это integer
         driver = db.query(Driver).filter(
-            Driver.id == data['driver_id'],
+            Driver.id == driver_id,
             Driver.taxipark_id == taxipark_id,
             Driver.is_active == True
         ).first()
@@ -1062,7 +1122,7 @@ async def create_order(request: Request, db: Session = Depends(get_db)):
             distance=data.get('distance'),
             duration=data.get('duration'),
             status='received',  # Новый статус
-            driver_id=data['driver_id'],
+            driver_id=driver_id,
             taxipark_id=taxipark_id,
             tariff=data['tariff'],
             payment_method=data['payment_method'],

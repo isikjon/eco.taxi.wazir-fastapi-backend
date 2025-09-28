@@ -18,11 +18,79 @@
     let pointACoords = null;
     let pointBCoords = null;
     
+    // Переменные для отслеживания состояния расчетов
+    let isCalculating = false;
+    let isRouteCalculated = false;
+    let isPriceCalculated = false;
+    
     const tariffPrices = {
         'Эконом': 48,
         'Комфорт': 60,
         'Бизнес': 80
     };
+    
+    // Функция для обновления состояния кнопки "Заказать"
+    function updateOrderButtonState() {
+        const orderButton = document.querySelector('.main__btn-green');
+        
+        // Проверяем все обязательные поля
+        const clientName = document.getElementById('client-name').value.trim();
+        const clientPhone = document.getElementById('client-phone').value.trim();
+        const pickupAddress = document.getElementById('pickup-address').value.trim();
+        const destinationAddress = document.getElementById('destination-address').value.trim();
+        const orderNotes = document.getElementById('order-notes').value.trim();
+        const selectedDriver = document.getElementById('driver-select').value;
+        
+        const canSubmit = pointACoords && 
+                         pointBCoords && 
+                         currentTariff && 
+                         isRouteCalculated && 
+                         isPriceCalculated && 
+                         !isCalculating &&
+                         clientName &&
+                         clientPhone &&
+                         pickupAddress &&
+                         destinationAddress &&
+                         orderNotes &&
+                         selectedDriver;
+        
+        if (orderButton) {
+            if (canSubmit) {
+                orderButton.disabled = false;
+                orderButton.style.opacity = '1';
+                orderButton.style.cursor = 'pointer';
+                orderButton.textContent = 'Заказать';
+            } else {
+                orderButton.disabled = true;
+                orderButton.style.opacity = '0.5';
+                orderButton.style.cursor = 'not-allowed';
+                
+                if (isCalculating) {
+                    orderButton.textContent = 'Расчет...';
+                } else if (!clientName) {
+                    orderButton.textContent = 'Введите имя клиента';
+                } else if (!clientPhone) {
+                    orderButton.textContent = 'Введите телефон клиента';
+                } else if (!pickupAddress) {
+                    orderButton.textContent = 'Введите точку А';
+                } else if (!destinationAddress) {
+                    orderButton.textContent = 'Введите точку Б';
+                } else if (!orderNotes) {
+                    orderButton.textContent = 'Введите примечание';
+                } else if (!selectedDriver) {
+                    orderButton.textContent = 'Выберите водителя';
+                } else if (!pointACoords || !pointBCoords) {
+                    orderButton.textContent = 'Установите точки А и Б на карте';
+                } else if (!isRouteCalculated) {
+                    orderButton.textContent = 'Расчет маршрута...';
+                } else if (!isPriceCalculated) {
+                    orderButton.textContent = 'Расчет цены...';
+                } else {
+                    orderButton.textContent = 'Заказать';
+                }
+            }
+        }
+    }
     
 function initMap() {
     if (typeof mapgl === 'undefined') {
@@ -163,6 +231,9 @@ function setPointA(coordinates) {
     if (markerB) {
         calculateRoute();
     }
+    
+    // Обновляем состояние кнопки
+    updateOrderButtonState();
 }
     
 function setPointB(coordinates) {
@@ -203,6 +274,9 @@ function setPointB(coordinates) {
     if (markerA) {
         calculateRoute();
     }
+    
+    // Обновляем состояние кнопки
+    updateOrderButtonState();
 }
 
 function reverseGeocode(coords, inputId) {
@@ -227,8 +301,17 @@ function reverseGeocode(coords, inputId) {
 
 async function calculateRoute() {
     if (!markerA || !markerB) {
+        isRouteCalculated = false;
+        isPriceCalculated = false;
+        updateOrderButtonState();
         return;
     }
+    
+    // Устанавливаем флаг расчета
+    isCalculating = true;
+    isRouteCalculated = false;
+    isPriceCalculated = false;
+    updateOrderButtonState();
     
     const coordsA = markerA.getCoordinates();
     const coordsB = markerB.getCoordinates();
@@ -378,11 +461,23 @@ async function calculateDistanceAndTime(coordsA, coordsB) {
             displayRouteInfoFromRoutingAPI(route);
             // НЕ рисуем дополнительный маршрут - используем только Directions API для визуализации
             console.log('Данные получены, визуализация остается через Directions API');
+            
+            // Устанавливаем флаги завершения расчетов
+            isCalculating = false;
+            isRouteCalculated = true;
+            isPriceCalculated = true;
+            updateOrderButtonState();
         } else {
             console.error('Маршрут не найден через Routing API:', data);
             // Показываем ошибку - нет реальных данных
             displayRouteError();
             console.log('Не удалось получить реальные данные от 2ГИС');
+            
+            // Устанавливаем флаги ошибки
+            isCalculating = false;
+            isRouteCalculated = false;
+            isPriceCalculated = false;
+            updateOrderButtonState();
         }
         
     } catch (error) {
@@ -390,6 +485,12 @@ async function calculateDistanceAndTime(coordsA, coordsB) {
         // Показываем ошибку - нет реальных данных
         displayRouteError();
         console.log('Не удалось получить реальные данные от 2ГИС');
+        
+        // Устанавливаем флаги ошибки
+        isCalculating = false;
+        isRouteCalculated = false;
+        isPriceCalculated = false;
+        updateOrderButtonState();
     }
 }
 
@@ -633,6 +734,8 @@ function drawRouteOnMap(route) {
             } else {
                 clearTariff();
             }
+            // Обновляем состояние кнопки при изменении водителя
+            updateOrderButtonState();
         });
     }
 
@@ -911,6 +1014,10 @@ function searchLocalAddresses(query) {
             tariffSelect.disabled = true;
         }
         
+        // Сбрасываем флаги расчетов при смене водителя
+        isPriceCalculated = false;
+        updateOrderButtonState();
+        
         if (markerA && markerB) {
             calculateRoute();
         }
@@ -936,6 +1043,10 @@ function searchLocalAddresses(query) {
         if (priceDisplay) {
             priceDisplay.textContent = 'Цена: 0 сом';
         }
+        
+        // Сбрасываем флаги расчетов
+        isPriceCalculated = false;
+        updateOrderButtonState();
     }
     
     function resetPoints() {
@@ -982,6 +1093,12 @@ function searchLocalAddresses(query) {
         if (distanceDisplay) distanceDisplay.textContent = 'Расстояние: 0 км';
         if (durationDisplay) durationDisplay.textContent = 'Время: 0 мин';
         if (priceDisplay) priceDisplay.textContent = 'Цена: 0 сом';
+        
+        // Сбрасываем все флаги расчетов
+        isCalculating = false;
+        isRouteCalculated = false;
+        isPriceCalculated = false;
+        updateOrderButtonState();
 }
 
 // Функция маски для телефона
@@ -1046,7 +1163,43 @@ document.addEventListener('DOMContentLoaded', function() {
     initPhoneMask();
     updateKyrgyzstanTime();
     setInterval(updateKyrgyzstanTime, 1000);
+    
+    // Инициализируем состояние кнопки
+    updateOrderButtonState();
+    
+    // Инициализируем обработчики полей
+    initFieldHandlers();
 });
+
+// Функция для инициализации обработчиков полей ввода
+function initFieldHandlers() {
+    // Обработчики для всех полей ввода
+    const fields = [
+        'client-name',
+        'client-phone', 
+        'pickup-address',
+        'destination-address',
+        'order-notes'
+    ];
+    
+    fields.forEach(fieldId => {
+        const field = document.getElementById(fieldId);
+        if (field) {
+            // Обработчик для события input (ввод текста)
+            field.addEventListener('input', updateOrderButtonState);
+            // Обработчик для события change (изменение значения)
+            field.addEventListener('change', updateOrderButtonState);
+            // Обработчик для события blur (потеря фокуса)
+            field.addEventListener('blur', updateOrderButtonState);
+        }
+    });
+    
+    // Обработчик для селекта водителей
+    const driverSelect = document.getElementById('driver-select');
+    if (driverSelect) {
+        driverSelect.addEventListener('change', updateOrderButtonState);
+    }
+}
 
 function displayRouteInfoFromRoutingAPI(route) {
     console.log('Обрабатываем данные маршрута из Routing API:', route);
@@ -1321,9 +1474,26 @@ function drawRouteFromGeometry(geometry) {
          if (typeof resetPoints === 'function') {
              resetPoints();
          }
+         
+         // Сбрасываем все флаги расчетов
+         isCalculating = false;
+         isRouteCalculated = false;
+         isPriceCalculated = false;
+         
+         // Обновляем состояние кнопки после сброса всех полей
+         setTimeout(() => {
+             updateOrderButtonState();
+         }, 100);
     }
     
     function submitOrder() {
+        // Проверяем, можно ли отправлять заказ
+        const orderButton = document.querySelector('.main__btn-green');
+        if (orderButton && orderButton.disabled) {
+            console.log('Кнопка заблокирована, заказ не может быть отправлен');
+            return;
+        }
+        
         // Используем сохраненные координаты
         console.log('Координаты точки A:', pointACoords);
         console.log('Координаты точки B:', pointBCoords);
@@ -1357,6 +1527,15 @@ function drawRouteFromGeometry(geometry) {
             notes: document.getElementById('order-notes').value || ''
         };
         
+        // Проверяем все обязательные поля
+        if (!orderData.client_name) {
+            alert('Введите имя клиента');
+            return;
+        }
+        if (!orderData.client_phone) {
+            alert('Введите телефон клиента');
+            return;
+        }
         if (!orderData.driver_id) {
             alert('Выберите водителя');
             return;
@@ -1375,6 +1554,10 @@ function drawRouteFromGeometry(geometry) {
         }
         if (!orderData.destination_address) {
             alert('Введите адрес назначения');
+            return;
+        }
+        if (!orderData.notes) {
+            alert('Введите примечание');
             return;
         }
         if (!pointACoords) {
@@ -1540,6 +1723,19 @@ html {
  .main__table tbody td {
      font-size: 12px;
  }
+
+/* Стили для заблокированной кнопки заказа */
+.main__btn-green:disabled {
+    background-color: #666 !important;
+    color: #999 !important;
+    cursor: not-allowed !important;
+    opacity: 0.5 !important;
+}
+
+.main__btn-green:disabled:hover {
+    background-color: #666 !important;
+    color: #999 !important;
+}
 </style>
 
 <script>
