@@ -1767,15 +1767,25 @@ html {
     }
     
     function handleWebSocketMessage(data) {
+        console.log('WebSocket сообщение получено:', data);
+        
         if (data.type === 'driver_status_changed') {
+            console.log('Статус водителя изменился, обновляем список');
+            updateDriverList();
+        } else if (data.type === 'connection_established') {
+            console.log('WebSocket соединение установлено');
+            // Обновляем список водителей после установки соединения
             updateDriverList();
         }
     }
     
     async function updateDriverList() {
         try {
+            console.log('Обновляем список водителей...');
             const response = await fetch('/disp/api/online-drivers');
             const result = await response.json();
+            
+            console.log('Ответ API:', result);
             
             if (result.success) {
                 const driverSelect = document.getElementById('driver-select');
@@ -1784,6 +1794,7 @@ html {
                 driverSelect.innerHTML = '<option value="" disabled selected>Водители</option>';
                 
                 if (result.drivers.length === 0) {
+                    console.log('Нет активных водителей');
                     let noDriversMsg = document.getElementById('no-drivers-message');
                     if (!noDriversMsg) {
                         noDriversMsg = document.createElement('p');
@@ -1797,6 +1808,7 @@ html {
                         }
                     }
                 } else {
+                    console.log(`Найдено ${result.drivers.length} активных водителей:`, result.drivers);
                     const existingMsg = document.getElementById('no-drivers-message');
                     if (existingMsg) {
                         existingMsg.remove();
@@ -1822,6 +1834,11 @@ html {
     
     document.addEventListener('DOMContentLoaded', function() {
         connectWebSocket();
+        // Загружаем список водителей при загрузке страницы
+        updateDriverList();
+        
+        // Обновляем список водителей каждые 5 секунд для высокого спроса
+        setInterval(updateDriverList, 5000);
     });
 </script>
 {% endblock %}

@@ -869,6 +869,8 @@ async def get_online_drivers_for_dispatcher(request: Request, db: Session = Depe
     dispatcher = getattr(request.state, 'dispatcher', None)
     taxipark_id = getattr(request.state, 'taxipark_id', None)
     
+    print(f"🔍 DEBUG: API /disp/api/online-drivers вызван для таксопарка {taxipark_id}")
+    
     if not dispatcher:
         raise HTTPException(status_code=401, detail="Unauthorized")
     
@@ -908,6 +910,10 @@ async def get_online_drivers_for_dispatcher(request: Request, db: Session = Depe
             Driver.online_status == 'online',
             ~Driver.id.in_(busy_driver_ids)
         ).all()
+        
+        print(f"🔍 DEBUG: Найдено {len(online_drivers)} свободных онлайн водителей для таксопарка {taxipark_id}")
+        for driver in online_drivers:
+            print(f"🔍 DEBUG: Водитель {driver.id} - {driver.first_name} {driver.last_name} (статус: {driver.online_status})")
         
         return {
             "success": True,
