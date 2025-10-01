@@ -213,40 +213,172 @@ async def get_parks(db: SessionLocal = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 async def send_sms_code(request: SmsRequest):
-    """Отправить SMS код (в тестовом режиме всегда возвращает успех)"""
+    """Отправить SMS код через Devino API"""
     try:
+        import requests
+        import random
+        from datetime import datetime
+        
+        print("=" * 80)
+        print(f"🚀 [SMS] ===== НАЧАЛО ОТПРАВКИ SMS КОДА =====")
+        print(f"🕐 [SMS] Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"📞 [SMS] Исходный номер: {request.phoneNumber}")
+        
+        # Генерируем 4-значный код
+        sms_code = str(random.randint(1000, 9999))
+        print(f"🔢 [SMS] СГЕНЕРИРОВАННЫЙ КОД ДЛЯ ОТЛАДКИ: {sms_code}")
+        
+        # Нормализуем номер телефона
+        normalized_phone = normalize_phone_number(request.phoneNumber)
+        print(f"📱 [SMS] Номер получателя: {normalized_phone}")
+        print(f"⏰ [SMS] Время генерации: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Отправляем SMS через Devino 2FA API
+        devino_2fa_url = "https://phoneverification.devinotele.com/GenerateCode"
+        devino_api_key = "8YF4D4R8k094r8uR3nwiEnsRuwIXRW67"
+        
+        # Нормализуем номер для 2FA API (убираем +)
+        phone_for_2fa = normalized_phone.replace('+', '')
+        
+        print(f"📱 [SMS] Отправка через Devino 2FA API")
+        print(f"📱 [SMS] Номер для 2FA: {phone_for_2fa}")
+        
+        try:
+            # Отправляем запрос на генерацию кода через 2FA API
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "X-ApiKey": devino_api_key
+            }
+            
+            payload = {
+                "DestinationNumber": phone_for_2fa
+            }
+            
+            print(f"📤 [SMS] 2FA URL: {devino_2fa_url}")
+            print(f"📤 [SMS] 2FA данные: {payload}")
+            
+            response = requests.post(
+                devino_2fa_url,
+                headers=headers,
+                json=payload,
+                timeout=30
+            )
+            
+            print(f"📤 [SMS] 2FA ответ: {response.status_code}")
+            print(f"📤 [SMS] 2FA тело: {response.text}")
+            
+            if response.status_code == 200:
+                response_data = response.json()
+                
+                if response_data.get('Code') == 0:
+                    # SMS код успешно отправлен через Devino 2FA
+                    print(f"✅ [SMS] SMS код отправлен через Devino 2FA")
+                    
+                    # Сохраняем код в БД (используем сгенерированный код)
+                    print(f"💾 [SMS] Сохранение кода в БД...")
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    
+                    cursor.execute('''
+                        INSERT INTO sms_codes (phone_number, code, expires_at)
+                        VALUES (?, ?, datetime('now', '+10 minutes'))
+                    ''', (request.phoneNumber, sms_code))
+                    
+                    conn.commit()
+                    conn.close()
+                    print(f"✅ [SMS] Код сохранен в БД успешно")
+                    
+                    print(f"🎉 [SMS] ===== SMS ОТПРАВЛЕН УСПЕШНО =====")
+                    print(f"📱 [SMS] Номер: {phone_for_2fa}")
+                    print(f"🔢 [SMS] Код: {sms_code}")
+                    print(f"📝 [SMS] Описание: {response_data.get('Description')}")
+                    print(f"⏰ [SMS] Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+                    print("=" * 80)
+                    
+                    return {
+                        "success": True,
+                        "message": "SMS код отправлен",
+                        "messageId": f"devino_2fa_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+                        "provider": "devino_2fa",
+                        "description": response_data.get('Description')
+                    }
+                else:
+                    error_code = response_data.get('Code')
+                    error_desc = response_data.get('Description', 'Неизвестная ошибка')
+                    print(f"❌ [SMS] Devino 2FA API ошибка: {error_code} - {error_desc}")
+                    return _fallback_sms_mode(sms_code, request.phoneNumber, f"Devino 2FA API error: {error_desc}")
+            else:
+                print(f"❌ [SMS] HTTP ошибка: {response.status_code}")
+                return _fallback_sms_mode(sms_code, request.phoneNumber, f"HTTP error: {response.status_code}")
+                
+        except requests.exceptions.RequestException as e:
+            print(f"❌ [SMS] Ошибка соединения с Devino 2FA: {str(e)}")
+            return _fallback_sms_mode(sms_code, request.phoneNumber, f"Connection error: {str(e)}")
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ [SMS] Критическая ошибка: {str(e)}")
+        print(f"❌ [SMS] ===== SMS НЕ ОТПРАВЛЕН =====")
+        print("=" * 80)
+        raise HTTPException(status_code=500, detail=f"SMS sending error: {str(e)}")
+
+def _fallback_sms_mode(sms_code: str, phone_number: str, reason: str):
+    """Fallback режим для SMS - сохраняем код в БД без отправки"""
+    try:
+        print(f"🔄 [SMS] ===== FALLBACK РЕЖИМ =====")
+        print(f"📱 [SMS] Номер: {phone_number}")
+        print(f"🔢 [SMS] FALLBACK КОД ДЛЯ ОТЛАДКИ: {sms_code}")
+        print(f"⚠️ [SMS] Причина fallback: {reason}")
+        print(f"⏰ [SMS] Время fallback: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        
+        # Сохраняем код в БД
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # В реальном приложении здесь была бы интеграция с SMS сервисом
-        # Для тестирования используем код 1111
-        test_code = "1111"
-        expires_at = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        # Сохраняем код в БД
         cursor.execute('''
             INSERT INTO sms_codes (phone_number, code, expires_at)
             VALUES (?, ?, datetime('now', '+10 minutes'))
-        ''', (request.phoneNumber, test_code))
+        ''', (phone_number, sms_code))
         
         conn.commit()
         conn.close()
         
+        print(f"✅ [SMS] Код сохранен в БД (fallback режим)")
+        print(f"🎉 [SMS] ===== FALLBACK SMS УСПЕШЕН =====")
+        print("=" * 80)
+        
         return {
             "success": True,
-            "message": "SMS код отправлен",
-            "test_code": test_code  # В продакшене убрать
+            "message": "SMS код отправлен (тестовый режим)",
+            "messageId": f"fallback_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            "provider": "fallback",
+            "fallback_reason": reason,
+            "test_code": sms_code  # Для отладки
         }
-        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"SMS sending error: {str(e)}")
+        print(f"❌ [SMS] Ошибка в fallback режиме: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Fallback SMS error: {str(e)}")
 
 async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db)):
     """Авторизация водителя по номеру телефона и SMS коду"""
     try:
         from app.models.driver import Driver
+        from datetime import datetime
+        
+        print("=" * 80)
+        print(f"🔐 [LOGIN] ===== НАЧАЛО АВТОРИЗАЦИИ ВОДИТЕЛЯ =====")
+        print(f"🕐 [LOGIN] Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"📞 [LOGIN] Номер телефона: {request.phoneNumber}")
+        print(f"🔢 [LOGIN] SMS код: {request.smsCode}")
+        
+        # Нормализуем номер телефона для поиска в БД
+        normalized_phone = normalize_phone_number(request.phoneNumber)
+        print(f"📱 [LOGIN] Нормализованный номер: {normalized_phone}")
         
         # Проверяем SMS код в SQLite БД
+        print(f"🔍 [LOGIN] Проверка SMS кода в БД...")
         conn = get_db_connection()
         cursor = conn.cursor()
         
@@ -260,33 +392,55 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
         sms_record = cursor.fetchone()
         if not sms_record:
             conn.close()
+            print(f"❌ [LOGIN] SMS код не найден или истек")
+            print(f"❌ [LOGIN] ===== АВТОРИЗАЦИЯ НЕУСПЕШНА =====")
+            print("=" * 80)
             raise HTTPException(status_code=400, detail="Неверный или истекший SMS код")
         
+        print(f"✅ [LOGIN] SMS код найден в БД, ID: {sms_record['id']}")
+        print(f"⏰ [LOGIN] Код создан: {sms_record['created_at']}")
+        print(f"⏰ [LOGIN] Код истекает: {sms_record['expires_at']}")
+        
         # Отмечаем код как использованный
+        print(f"🔄 [LOGIN] Отмечаем SMS код как использованный...")
         cursor.execute('''
             UPDATE sms_codes SET used = TRUE WHERE id = ?
         ''', (sms_record['id'],))
         conn.commit()
         conn.close()
-        
-        # Нормализуем номер телефона для поиска в БД
-        normalized_phone = normalize_phone_number(request.phoneNumber)
-        print(f"🔑 Original phone: {request.phoneNumber}")
-        print(f"🔑 Normalized phone: {normalized_phone}")
+        print(f"✅ [LOGIN] SMS код отмечен как использованный")
         
         # Проверяем, существует ли водитель в SQLAlchemy БД
+        print(f"🔍 [LOGIN] Поиск водителя в основной БД...")
         driver = db.query(Driver).filter(Driver.phone_number == normalized_phone).first()
         
         if driver:
             # Существующий водитель
-            print(f"Found driver: {driver}")
-            print(f"Driver taxipark: {driver.taxipark}")
+            print(f"✅ [LOGIN] Водитель найден в БД")
+            print(f"👤 [LOGIN] ID водителя: {driver.id}")
+            print(f"👤 [LOGIN] Имя: {driver.first_name} {driver.last_name}")
+            print(f"🚗 [LOGIN] Машина: {driver.car_model}")
+            print(f"🏢 [LOGIN] Таксопарк ID: {driver.taxipark_id}")
+            print(f"💳 [LOGIN] Баланс: {driver.balance}")
+            print(f"🔒 [LOGIN] Активен: {driver.is_active}")
             
             try:
                 taxipark_name = driver.taxipark.name if driver.taxipark else "Не указан"
+                print(f"🏢 [LOGIN] Название таксопарка: {taxipark_name}")
             except Exception as e:
-                print(f"Error getting taxipark name: {e}")
+                print(f"⚠️ [LOGIN] Ошибка получения названия таксопарка: {e}")
                 taxipark_name = "Не указан"
+            
+            # Проверяем статус водителя
+            if not driver.is_active:
+                print(f"🚫 [LOGIN] Водитель заблокирован!")
+                print(f"❌ [LOGIN] ===== АВТОРИЗАЦИЯ НЕУСПЕШНА (ЗАБЛОКИРОВАН) =====")
+                print("=" * 80)
+                return {
+                    "success": False,
+                    "error": "blocked",
+                    "message": "Ваш аккаунт заблокирован суперадмином. Для связи: +996 559 868 878"
+                }
             
             driver_data = {
                 "id": driver.id,
@@ -308,7 +462,14 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
                 "blockMessage": "Ваш аккаунт заблокирован суперадмином. Для связи: +996 559 868 878" if not driver.is_active else None
             }
             
-            print(f"Returning driver data: {driver_data}")
+            print(f"📊 [LOGIN] Данные водителя для ответа: {driver_data}")
+            print(f"🎉 [LOGIN] ===== АВТОРИЗАЦИЯ УСПЕШНА (СУЩЕСТВУЮЩИЙ ВОДИТЕЛЬ) =====")
+            print(f"👤 [LOGIN] Водитель: {driver_data['fullName']}")
+            print(f"📱 [LOGIN] Номер: {driver_data['phoneNumber']}")
+            print(f"🚗 [LOGIN] Машина: {driver_data['carModel']}")
+            print(f"🏢 [LOGIN] Таксопарк: {driver_data['taxiparkName']}")
+            print(f"⏰ [LOGIN] Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("=" * 80)
             
             return {
                 "success": True,
@@ -317,6 +478,12 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
             }
         else:
             # Новый водитель
+            print(f"🆕 [LOGIN] Водитель не найден в БД - новый пользователь")
+            print(f"🎉 [LOGIN] ===== АВТОРИЗАЦИЯ УСПЕШНА (НОВЫЙ ВОДИТЕЛЬ) =====")
+            print(f"📱 [LOGIN] Номер: {normalized_phone}")
+            print(f"⏰ [LOGIN] Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("=" * 80)
+            
             return {
                 "success": True,
                 "isNewUser": True,
@@ -326,29 +493,58 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ [LOGIN] Критическая ошибка авторизации: {str(e)}")
+        print(f"❌ [LOGIN] ===== АВТОРИЗАЦИЯ НЕУСПЕШНА =====")
+        print("=" * 80)
         raise HTTPException(status_code=500, detail=f"Login error: {str(e)}")
 
 async def register_driver(registration: DriverRegistration, db: SessionLocal = Depends(get_db)):
     try:
         from app.models.driver import Driver
         from app.models.taxipark import TaxiPark
+        from datetime import datetime
+        
+        print("=" * 80)
+        print(f"📝 [REGISTER] ===== НАЧАЛО РЕГИСТРАЦИИ ВОДИТЕЛЯ =====")
+        print(f"🕐 [REGISTER] Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         
         user_data = registration.user
         car_data = registration.car
         park_data = registration.park
         
+        print(f"📞 [REGISTER] Номер телефона: {user_data.get('phoneNumber', '')}")
+        print(f"👤 [REGISTER] Полное имя: {user_data.get('fullName', '')}")
+        print(f"🚗 [REGISTER] Машина: {car_data.get('brand', '')} {car_data.get('model', '')}")
+        print(f"🏢 [REGISTER] Таксопарк ID: {park_data.get('id')}")
+        print(f"🏢 [REGISTER] Название таксопарка: {park_data.get('name', '')}")
+        
         # Нормализуем номер телефона
         normalized_phone = normalize_phone_number(user_data.get('phoneNumber', ''))
+        print(f"📱 [REGISTER] Нормализованный номер: {normalized_phone}")
         
         # Проверяем, не существует ли уже водитель с таким номером
+        print(f"🔍 [REGISTER] Проверка существования водителя...")
         existing_driver = db.query(Driver).filter(Driver.phone_number == normalized_phone).first()
         if existing_driver:
+            print(f"❌ [REGISTER] Водитель с номером {normalized_phone} уже зарегистрирован!")
+            print(f"❌ [REGISTER] ID существующего водителя: {existing_driver.id}")
+            print(f"❌ [REGISTER] ===== РЕГИСТРАЦИЯ НЕУСПЕШНА =====")
+            print("=" * 80)
             raise HTTPException(status_code=400, detail="Водитель с таким номером уже зарегистрирован")
         
+        print(f"✅ [REGISTER] Водитель с таким номером не найден, продолжаем регистрацию")
+        
         # Проверяем, существует ли таксопарк
+        print(f"🔍 [REGISTER] Проверка существования таксопарка...")
         taxipark = db.query(TaxiPark).filter(TaxiPark.id == park_data.get('id')).first()
         if not taxipark:
+            print(f"❌ [REGISTER] Таксопарк с ID {park_data.get('id')} не найден!")
+            print(f"❌ [REGISTER] ===== РЕГИСТРАЦИЯ НЕУСПЕШНА =====")
+            print("=" * 80)
             raise HTTPException(status_code=400, detail="Указанный таксопарк не найден")
+        
+        print(f"✅ [REGISTER] Таксопарк найден: {taxipark.name}")
+        print(f"👥 [REGISTER] Текущее количество водителей в таксопарке: {taxipark.driver_count or 0}")
         
         # Парсим полное имя
         full_name = user_data.get('fullName', '')
@@ -356,7 +552,13 @@ async def register_driver(registration: DriverRegistration, db: SessionLocal = D
         first_name = name_parts[0] if len(name_parts) > 0 else ''
         last_name = name_parts[1] if len(name_parts) > 1 else ''
         
+        print(f"👤 [REGISTER] Имя: {first_name}")
+        print(f"👤 [REGISTER] Фамилия: {last_name}")
+        print(f"📞 [REGISTER] Позывной: {user_data.get('callSign', '')}")
+        print(f"💰 [REGISTER] Тариф: {user_data.get('tariff', 'Эконом')}")
+        
         # Регистрируем нового водителя
+        print(f"🆕 [REGISTER] Создание записи водителя в БД...")
         new_driver = Driver(
             phone_number=normalized_phone,
             first_name=first_name,
@@ -374,13 +576,26 @@ async def register_driver(registration: DriverRegistration, db: SessionLocal = D
             is_active=True
         )
         
+        print(f"💾 [REGISTER] Сохранение водителя в БД...")
         db.add(new_driver)
         db.commit()
         db.refresh(new_driver)
         
+        print(f"✅ [REGISTER] Водитель сохранен с ID: {new_driver.id}")
+        
         # Обновляем счетчик водителей в таксопарке
+        print(f"📊 [REGISTER] Обновление счетчика водителей в таксопарке...")
         from app.services.taxipark_service import TaxiParkService
         TaxiParkService.update_drivers_count(db, new_driver.taxipark_id)
+        
+        print(f"🎉 [REGISTER] ===== РЕГИСТРАЦИЯ УСПЕШНА =====")
+        print(f"🆔 [REGISTER] ID водителя: {new_driver.id}")
+        print(f"👤 [REGISTER] Имя: {new_driver.first_name} {new_driver.last_name}")
+        print(f"📱 [REGISTER] Номер: {new_driver.phone_number}")
+        print(f"🚗 [REGISTER] Машина: {new_driver.car_model}")
+        print(f"🏢 [REGISTER] Таксопарк: {taxipark.name}")
+        print(f"⏰ [REGISTER] Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print("=" * 80)
         
         return {
             "success": True,
@@ -392,6 +607,9 @@ async def register_driver(registration: DriverRegistration, db: SessionLocal = D
     except HTTPException:
         raise
     except Exception as e:
+        print(f"❌ [REGISTER] Критическая ошибка регистрации: {str(e)}")
+        print(f"❌ [REGISTER] ===== РЕГИСТРАЦИЯ НЕУСПЕШНА =====")
+        print("=" * 80)
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Registration error: {str(e)}")
 
