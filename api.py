@@ -463,7 +463,7 @@ async def register_driver(registration: DriverRegistration, db: SessionLocal = D
             raise HTTPException(status_code=400, detail="Указанный таксопарк не найден")
         
         print(f"✅ [REGISTER] Таксопарк найден: {taxipark.name}")
-        print(f"👥 [REGISTER] Текущее количество водителей в таксопарке: {taxipark.driver_count or 0}")
+        print(f"👥 [REGISTER] Текущее количество водителей в таксопарке: {taxipark.drivers_count or 0}")
         
         # Парсим полное имя
         full_name = user_data.get('fullName', '')
