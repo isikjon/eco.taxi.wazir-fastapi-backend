@@ -1,9 +1,11 @@
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from sqlalchemy import func, and_
 from app.models.taxipark import TaxiPark
 from app.models.driver import Driver
 from app.models.order import Order
 from app.models.administrator import Administrator
+import math
 
 class DispatcherService:
     
@@ -124,3 +126,64 @@ class DispatcherService:
             "orders_stats": orders_stats,
             "orders": orders
         }
+    
+    @staticmethod
+    def get_nearest_available_driver(
+        db: Session, 
+        taxipark_id: int, 
+        latitude: float, 
+        longitude: float, 
+        radius_km: float = 30.0
+    ) -> Optional[Driver]:
+        """Найти ближайшего свободного онлайн водителя в радиусе от точки"""
+        
+        busy_driver_ids = db.query(Order.driver_id).filter(
+            Order.taxipark_id == taxipark_id,
+            Order.driver_id.isnot(None),
+            Order.status.in_(['accepted', 'navigating_to_a', 'arrived_at_a', 'navigating_to_b', 'in_progress'])
+        ).subquery()
+        
+        available_drivers = db.query(Driver).filter(
+            Driver.taxipark_id == taxipark_id,
+            Driver.is_active == True,
+            Driver.online_status == 'online',
+            ~Driver.id.in_(busy_driver_ids)
+        ).all()
+        
+        if not available_drivers:
+            print(f"🔍 [DispatcherService] No available drivers found for taxipark {taxipark_id}")
+            return None
+        
+        def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+            R = 6371.0
+            
+            lat1_rad = math.radians(lat1)
+            lon1_rad = math.radians(lon1)
+            lat2_rad = math.radians(lat2)
+            lon2_rad = math.radians(lon2)
+            
+            dlat = lat2_rad - lat1_rad
+            dlon = lon2_rad - lon1_rad
+            
+            a = math.sin(dlat / 2)**2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2)**2
+            c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+            
+            distance = R * c
+            return distance
+        
+        nearest_driver = None
+        min_distance = float('inf')
+        
+        for driver in available_drivers:
+            distance = haversine_distance(latitude, longitude, 0, 0)
+            
+            if distance <= radius_km and distance < min_distance:
+                min_distance = distance
+                nearest_driver = driver
+        
+        if nearest_driver:
+            print(f"✅ [DispatcherService] Found nearest driver: {nearest_driver.first_name} {nearest_driver.last_name} (distance: {min_distance:.2f} km)")
+        else:
+            print(f"❌ [DispatcherService] No drivers found within {radius_km} km radius")
+        
+        return nearest_driver if min_distance <= radius_km else None

@@ -273,3 +273,151 @@ async def update_client_payment_method(update_data: dict, db: Session = Depends(
             "success": False,
             "error": f"Ошибка обновления способа оплаты: {str(e)}"
         }
+
+@client_router.post("/create-order")
+async def create_order_from_client(order_data: dict, db: Session = Depends(get_db)):
+    """Создание заказа клиентом"""
+    try:
+        from app.models.order import Order
+        from app.models.taxipark import TaxiPark
+        from app.services.dispatcher_service import DispatcherService
+        from app.websocket.manager import websocket_manager
+        from app.services.fcm_service import fcm_service
+        import random
+        
+        print(f"🔍 [CreateOrder] Received order data: {order_data}")
+        
+        client_phone = order_data.get('client_phone')
+        if not client_phone:
+            return {
+                "success": False,
+                "error": "Номер телефона клиента обязателен"
+            }
+        
+        normalized_phone = normalize_phone_number(client_phone)
+        client = db.query(Client).filter(Client.phone_number == normalized_phone).first()
+        
+        if not client:
+            return {
+                "success": False,
+                "error": "Клиент не найден"
+            }
+        
+        taxipark = db.query(TaxiPark).first()
+        if not taxipark:
+            return {
+                "success": False,
+                "error": "Таксопарк не найден"
+            }
+        
+        pickup_latitude = order_data.get('pickup_latitude')
+        pickup_longitude = order_data.get('pickup_longitude')
+        
+        if not pickup_latitude or not pickup_longitude:
+            return {
+                "success": False,
+                "error": "Координаты точки А обязательны"
+            }
+        
+        nearest_driver = DispatcherService.get_nearest_available_driver(
+            db, taxipark.id, pickup_latitude, pickup_longitude, radius_km=30.0
+        )
+        
+        if not nearest_driver:
+            return {
+                "success": False,
+                "error": "Нет доступных водителей",
+                "error_code": "NO_DRIVERS_AVAILABLE"
+            }
+        
+        order_number = f"CL{random.randint(1000000, 9999999)}"
+        
+        new_order = Order(
+            order_number=order_number,
+            client_name=order_data.get('client_name', f"{client.first_name} {client.last_name}"),
+            client_phone=normalized_phone,
+            pickup_address=order_data.get('pickup_address', ''),
+            pickup_latitude=pickup_latitude,
+            pickup_longitude=pickup_longitude,
+            destination_address=order_data.get('destination_address', ''),
+            destination_latitude=order_data.get('destination_latitude'),
+            destination_longitude=order_data.get('destination_longitude'),
+            price=order_data.get('price', 0.0),
+            distance=order_data.get('distance'),
+            duration=order_data.get('duration'),
+            status='received',
+            driver_id=nearest_driver.id,
+            taxipark_id=taxipark.id,
+            tariff=order_data.get('tariff', 'Эконом'),
+            payment_method=order_data.get('payment_method', 'cash'),
+            notes=order_data.get('notes', ''),
+            created_at=datetime.now()
+        )
+        
+        db.add(new_order)
+        db.commit()
+        db.refresh(new_order)
+        
+        print(f"✅ [CreateOrder] Order created: {new_order.order_number}, assigned to driver {nearest_driver.id}")
+        
+        await websocket_manager.broadcast_new_order(
+            new_order.to_dict(), 
+            taxipark.id, 
+            nearest_driver.id
+        )
+        
+        if nearest_driver.fcm_token:
+            fcm_service.send_notification(
+                fcm_token=nearest_driver.fcm_token,
+                title="Новый заказ",
+                body=f"Заказ #{new_order.order_number} ждет принятия",
+                data={
+                    "type": "new_order",
+                    "order_id": str(new_order.id),
+                    "order_number": new_order.order_number
+                }
+            )
+        
+        return {
+            "success": True,
+            "message": "Заказ успешно создан",
+            "data": {
+                "order": new_order.to_dict(),
+                "driver": nearest_driver.to_dict()
+            }
+        }
+        
+    except Exception as e:
+        db.rollback()
+        print(f"❌ [CreateOrder] Error: {str(e)}")
+        return {
+            "success": False,
+            "error": f"Ошибка создания заказа: {str(e)}"
+        }
+
+@client_router.get("/orders/{order_id}/status")
+async def get_order_status(order_id: int, db: Session = Depends(get_db)):
+    """Получить статус заказа"""
+    try:
+        from app.models.order import Order
+        
+        order = db.query(Order).filter(Order.id == order_id).first()
+        
+        if not order:
+            return {
+                "success": False,
+                "error": "Заказ не найден"
+            }
+        
+        return {
+            "success": True,
+            "data": {
+                "order": order.to_dict()
+            }
+        }
+        
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Ошибка получения статуса заказа: {str(e)}"
+        }

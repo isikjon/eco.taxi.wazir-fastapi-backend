@@ -352,22 +352,33 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
         from app.models.driver import Driver
         from datetime import datetime
         
-        # Нормализуем номер телефона для поиска в БД
-        normalized_phone = normalize_phone_number(request.phoneNumber)
+        print("=" * 80)
+        print(f"🔐 [LOGIN] ===== НАЧАЛО АВТОРИЗАЦИИ ВОДИТЕЛЯ =====")
+        print(f"🕐 [LOGIN] Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"📞 [LOGIN] Номер телефона: {request.phoneNumber}")
+        print(f"🔢 [LOGIN] SMS код: {request.smsCode}")
         
-        # Проверяем SMS код через Devino 2FA API
+        normalized_phone = normalize_phone_number(request.phoneNumber)
+        print(f"📱 [LOGIN] Нормализованный номер: {normalized_phone}")
+        
+        print(f"🔍 [LOGIN] Проверка SMS кода через Devino 2FA...")
         check_result = await check_sms_code_with_devino(request.phoneNumber, request.smsCode)
         
         if not check_result['valid']:
+            print(f"❌ [LOGIN] SMS код невалидный: {check_result.get('error', 'Неизвестная ошибка')}")
             raise HTTPException(status_code=400, detail="Неверный или истекший SMS код")
         
-        # Быстрый поиск водителя в БД с оптимизацией
+        print(f"✅ [LOGIN] SMS код валидный")
+        print(f"🔍 [LOGIN] Поиск водителя в БД...")
+        
         driver = db.query(Driver).filter(Driver.phone_number == normalized_phone).first()
         
         if driver:
-            # Существующий водитель
-            # Проверяем статус водителя
+            print(f"✅ [LOGIN] Водитель найден: ID={driver.id}, ФИО={driver.first_name} {driver.last_name}")
+            
             if not driver.is_active:
+                print(f"❌ [LOGIN] Водитель заблокирован: ID={driver.id}")
+                print(f"=" * 80)
                 return {
                     "success": False,
                     "error": "blocked",
@@ -376,8 +387,10 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
             
             try:
                 taxipark_name = driver.taxipark.name if driver.taxipark else "Не указан"
+                print(f"🏢 [LOGIN] Таксопарк: {taxipark_name}")
             except Exception:
                 taxipark_name = "Не указан"
+                print(f"⚠️ [LOGIN] Таксопарк не найден")
             
             driver_data = {
                 "id": driver.id,
@@ -399,13 +412,22 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
                 "blockMessage": "Ваш аккаунт заблокирован суперадмином. Для связи: +996 559 868 878" if not driver.is_active else None
             }
             
+            print(f"✅ [LOGIN] Авторизация успешна для существующего водителя")
+            print(f"🚗 [LOGIN] Машина: {driver.car_model} {driver.car_number}")
+            print(f"💰 [LOGIN] Баланс: {driver.balance}")
+            print(f"🔐 [LOGIN] ===== АВТОРИЗАЦИЯ ЗАВЕРШЕНА =====")
+            print(f"=" * 80)
+            
             return {
                 "success": True,
                 "isNewUser": False,
                 "driver": driver_data
             }
         else:
-            # Новый водитель
+            print(f"⚠️ [LOGIN] Водитель не найден в БД - новый пользователь")
+            print(f"🔐 [LOGIN] ===== ТРЕБУЕТСЯ РЕГИСТРАЦИЯ =====")
+            print(f"=" * 80)
+            
             return {
                 "success": True,
                 "isNewUser": True,
@@ -413,8 +435,11 @@ async def login_driver(request: DriverLogin, db: SessionLocal = Depends(get_db))
             }
         
     except HTTPException:
+        print(f"=" * 80)
         raise
     except Exception as e:
+        print(f"❌ [LOGIN] КРИТИЧЕСКАЯ ОШИБКА: {str(e)}")
+        print(f"=" * 80)
         raise HTTPException(status_code=500, detail=f"Login error: {str(e)}")
 
 async def register_driver(registration: DriverRegistration, db: SessionLocal = Depends(get_db)):

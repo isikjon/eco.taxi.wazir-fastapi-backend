@@ -375,6 +375,65 @@ async def websocket_driver_endpoint(websocket: WebSocket, driver_id: str):
         websocket_manager.disconnect(f"driver_{driver_id}")
         print(f"❌ [WebSocket] Водитель {driver_id} отключен")
 
+@router.websocket("/ws/orders/client/{client_phone}")
+async def websocket_client_endpoint(websocket: WebSocket, client_phone: str):
+    """WebSocket endpoint для клиентов"""
+    try:
+        from app.database.session import SessionLocal
+        from app.models.client import Client
+        
+        db = SessionLocal()
+        try:
+            from app.api.client.routes import normalize_phone_number
+            normalized_phone = normalize_phone_number(client_phone)
+            client = db.query(Client).filter(Client.phone_number == normalized_phone).first()
+            if not client:
+                await websocket.close(code=1008, reason="Client not found")
+                return
+        finally:
+            db.close()
+        
+        await websocket_manager.connect(
+            websocket=websocket,
+            user_id=f"client_{normalized_phone}",
+            user_type="client",
+            taxipark_id=None
+        )
+        
+        print(f"✅ [WebSocket] Client {normalized_phone} connected")
+        
+        while True:
+            try:
+                data = await websocket.receive_text()
+                message = json.loads(data)
+                
+                print(f"🔍 [WebSocket] Message from client {normalized_phone}: {message}")
+                
+                if message.get('type') == 'ping':
+                    await websocket.send_text(json.dumps({
+                        'type': 'pong',
+                        'timestamp': message.get('timestamp')
+                    }))
+                
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                print(f"❌ [WebSocket] Error processing message from client {normalized_phone}: {e}")
+                await websocket.send_text(json.dumps({
+                    'type': 'error',
+                    'message': str(e)
+                }))
+                
+    except WebSocketDisconnect:
+        print(f"🔍 [WebSocket] Client {client_phone} disconnected")
+    except Exception as e:
+        print(f"❌ [WebSocket] WebSocket error for client {client_phone}: {e}")
+    finally:
+        from app.api.client.routes import normalize_phone_number
+        normalized_phone = normalize_phone_number(client_phone)
+        websocket_manager.disconnect(f"client_{normalized_phone}")
+        print(f"❌ [WebSocket] Client {client_phone} disconnected")
+
 @router.get("/ws/status")
 async def websocket_status():
     """Получить статус WebSocket соединений"""

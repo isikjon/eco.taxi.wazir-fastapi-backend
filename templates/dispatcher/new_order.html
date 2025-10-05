@@ -14,11 +14,9 @@
     let currentRoute = null;
     let globalDirections = null;
     
-    // Простые переменные для хранения координат
     let pointACoords = null;
     let pointBCoords = null;
     
-    // Переменные для отслеживания состояния расчетов
     let isCalculating = false;
     let isRouteCalculated = false;
     let isPriceCalculated = false;
@@ -29,11 +27,9 @@
         'Бизнес': 80
     };
     
-    // Функция для обновления состояния кнопки "Заказать"
     function updateOrderButtonState() {
         const orderButton = document.querySelector('.main__btn-green');
         
-        // Проверяем все обязательные поля
         const clientName = document.getElementById('client-name').value.trim();
         const clientPhone = document.getElementById('client-phone').value.trim();
         const pickupAddress = document.getElementById('pickup-address').value.trim();

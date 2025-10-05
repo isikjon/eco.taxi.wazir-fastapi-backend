@@ -28,7 +28,7 @@ class Order(Base):
     duration = Column(Integer, nullable=True)  # Время в минутах
     
     # Статусы заказа
-    status = Column(String, default="received")  # received, accepted, navigating_to_a, arrived_at_a, navigating_to_b, completed, cancelled
+    status = Column(String, default="received")  # received, accepted, navigating_to_a, arrived_at_a, navigating_to_b, completed, cancelled, rejected_by_driver
     
     # Водитель и таксопарк
     driver_id = Column(Integer, ForeignKey("drivers.id"), nullable=True)
@@ -65,6 +65,7 @@ class Order(Base):
             'navigating_to_b': 'Едет к точке Б',
             'completed': 'Выполнен',
             'cancelled': 'Отменен',
+            'rejected_by_driver': 'Отклонен водителем',
             'in_progress': 'Выполняется'
         }
         return status_map.get(self.status, self.status)

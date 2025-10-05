@@ -146,7 +146,7 @@ async def update_order_status(
         print(f"✅ [OrderRoutes] Order found: {order.order_number}, current status: {order.status}")
         
         # Валидируем статус
-        valid_statuses = ['accepted', 'navigating_to_a', 'arrived_at_a', 'navigating_to_b', 'completed', 'cancelled']
+        valid_statuses = ['accepted', 'navigating_to_a', 'arrived_at_a', 'navigating_to_b', 'completed', 'cancelled', 'rejected_by_driver']
         if new_status not in valid_statuses:
             raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
         
@@ -178,11 +178,51 @@ async def update_order_status(
             order.completed_at = now
         elif new_status == 'cancelled':
             order.cancelled_at = now
+        elif new_status == 'rejected_by_driver':
+            order.cancelled_at = now
         
         db.commit()
         
         # Отправляем обновление статуса через WebSocket
         from app.websocket.manager import websocket_manager
+        
+        if new_status == 'rejected_by_driver':
+            await websocket_manager.send_personal_message(
+                {
+                    "type": "order_rejected",
+                    "data": order.to_dict(),
+                    "timestamp": now.isoformat()
+                },
+                f"client_{order.client_phone}"
+            )
+        elif new_status == 'accepted':
+            await websocket_manager.send_personal_message(
+                {
+                    "type": "order_accepted",
+                    "data": order.to_dict(),
+                    "timestamp": now.isoformat()
+                },
+                f"client_{order.client_phone}"
+            )
+        elif new_status == 'arrived_at_a':
+            await websocket_manager.send_personal_message(
+                {
+                    "type": "driver_arrived",
+                    "data": order.to_dict(),
+                    "timestamp": now.isoformat()
+                },
+                f"client_{order.client_phone}"
+            )
+        elif new_status == 'completed':
+            await websocket_manager.send_personal_message(
+                {
+                    "type": "order_completed",
+                    "data": order.to_dict(),
+                    "timestamp": now.isoformat()
+                },
+                f"client_{order.client_phone}"
+            )
+        
         await websocket_manager.broadcast_order_status_update(
             order.to_dict(), 
             order.taxipark_id
