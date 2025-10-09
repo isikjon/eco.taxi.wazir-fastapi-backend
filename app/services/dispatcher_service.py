@@ -174,8 +174,22 @@ class DispatcherService:
         nearest_driver = None
         min_distance = float('inf')
         
+        print(f"🔍 [DispatcherService] Searching for drivers near ({latitude}, {longitude})")
+        print(f"🔍 [DispatcherService] Found {len(available_drivers)} available drivers")
+        
         for driver in available_drivers:
-            distance = haversine_distance(latitude, longitude, 0, 0)
+            if driver.current_latitude is None or driver.current_longitude is None:
+                print(f"⚠️ [DispatcherService] Driver {driver.first_name} {driver.last_name} has no location")
+                continue
+            
+            distance = haversine_distance(
+                latitude, 
+                longitude, 
+                driver.current_latitude, 
+                driver.current_longitude
+            )
+            
+            print(f"🔍 [DispatcherService] Driver {driver.first_name} {driver.last_name}: {distance:.2f} km away")
             
             if distance <= radius_km and distance < min_distance:
                 min_distance = distance
@@ -186,4 +200,4 @@ class DispatcherService:
         else:
             print(f"❌ [DispatcherService] No drivers found within {radius_km} km radius")
         
-        return nearest_driver if min_distance <= radius_km else None
+        return nearest_driver

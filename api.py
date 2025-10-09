@@ -223,8 +223,8 @@ async def send_sms_code(request: SmsRequest):
         if not normalized_phone:
             raise HTTPException(status_code=400, detail="Неверный формат номера телефона")
         
-        # Проверяем тестовый номер
-        if normalized_phone == "+996111111111":
+        # Проверяем тестовый номер (поддерживаем разные форматы)
+        if normalized_phone in ["+996111111111", "+9961111111111"]:
             return {
                 "success": True,
                 "message": "SMS код отправлен (тестовый режим)",
@@ -295,8 +295,8 @@ async def check_sms_code_with_devino(phone_number: str, code: str):
         if not normalized_phone:
             return {"valid": False, "error": "Неверный формат номера телефона"}
         
-        # Проверяем тестовый номер
-        if normalized_phone == "+996111111111":
+        # Проверяем тестовый номер (поддерживаем разные форматы)
+        if normalized_phone in ["+996111111111", "+9961111111111"]:
             if code == "1111":
                 return {
                     "valid": True,

@@ -93,8 +93,8 @@ async def login_client(login_data: ClientLogin, db: Session = Depends(get_db)):
         # Нормализуем номер телефона
         normalized_phone = normalize_phone_number(login_data.phone_number)
         
-        # Проверяем тестовый номер
-        if normalized_phone == "+996111111111":
+        # Проверяем тестовый номер (поддерживаем разные форматы)
+        if normalized_phone in ["+996111111111", "+9961111111111"]:
             if login_data.sms_code != "1111":
                 return {
                     "success": False,
