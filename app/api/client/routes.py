@@ -93,36 +93,44 @@ async def login_client(login_data: ClientLogin, db: Session = Depends(get_db)):
         # Нормализуем номер телефона
         normalized_phone = normalize_phone_number(login_data.phone_number)
         
-        # Проверяем SMS код в SQLite БД
-        conn = get_db_connection()
-        if not conn:
-            return {
-                "success": False,
-                "error": "База данных SMS недоступна"
-            }
-        
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT * FROM sms_codes 
-            WHERE phone_number = ? AND code = ? AND used = FALSE 
-            AND datetime('now') < expires_at
-            ORDER BY created_at DESC LIMIT 1
-        ''', (normalized_phone, login_data.sms_code))
-        
-        sms_record = cursor.fetchone()
-        if not sms_record:
+        # Проверяем тестовый номер
+        if normalized_phone == "+996111111111":
+            if login_data.sms_code != "1111":
+                return {
+                    "success": False,
+                    "error": "Неверный тестовый код"
+                }
+        else:
+            # Проверяем SMS код в SQLite БД
+            conn = get_db_connection()
+            if not conn:
+                return {
+                    "success": False,
+                    "error": "База данных SMS недоступна"
+                }
+            
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT * FROM sms_codes 
+                WHERE phone_number = ? AND code = ? AND used = FALSE 
+                AND datetime('now') < expires_at
+                ORDER BY created_at DESC LIMIT 1
+            ''', (normalized_phone, login_data.sms_code))
+            
+            sms_record = cursor.fetchone()
+            if not sms_record:
+                conn.close()
+                return {
+                    "success": False,
+                    "error": "Неверный или истекший SMS код"
+                }
+            
+            # Отмечаем код как использованный
+            cursor.execute('''
+                UPDATE sms_codes SET used = TRUE WHERE id = ?
+            ''', (sms_record['id'],))
+            conn.commit()
             conn.close()
-            return {
-                "success": False,
-                "error": "Неверный или истекший SMS код"
-            }
-        
-        # Отмечаем код как использованный
-        cursor.execute('''
-            UPDATE sms_codes SET used = TRUE WHERE id = ?
-        ''', (sms_record['id'],))
-        conn.commit()
-        conn.close()
         
         # Ищем клиента по номеру телефона
         client = db.query(Client).filter(Client.phone_number == normalized_phone).first()
