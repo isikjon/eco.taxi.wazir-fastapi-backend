@@ -6,6 +6,9 @@ from app.models.driver import Driver
 from app.models.order import Order
 from app.models.administrator import Administrator
 import math
+import logging
+
+logger = logging.getLogger(__name__)
 
 class DispatcherService:
     
@@ -137,11 +140,35 @@ class DispatcherService:
     ) -> Optional[Driver]:
         """Найти ближайшего свободного онлайн водителя в радиусе от точки"""
         
+        logger.info(f"🔍 [DispatcherService] === START DRIVER SEARCH ===")
+        logger.info(f"🔍 [DispatcherService] Taxipark ID: {taxipark_id}")
+        logger.info(f"🔍 [DispatcherService] Pickup location: ({latitude}, {longitude})")
+        logger.info(f"🔍 [DispatcherService] Search radius: {radius_km} km")
+        
+        # Сначала получим ВСЕХ водителей таксопарка
+        all_drivers = db.query(Driver).filter(Driver.taxipark_id == taxipark_id).all()
+        logger.info(f"🔍 [DispatcherService] Total drivers in taxipark: {len(all_drivers)}")
+        
+        for driver in all_drivers:
+            logger.info(f"🔍 [DispatcherService] Driver: {driver.first_name} {driver.last_name}")
+            logger.info(f"   - ID: {driver.id}")
+            logger.info(f"   - Phone: {driver.phone_number}")
+            logger.info(f"   - is_active: {driver.is_active}")
+            logger.info(f"   - online_status: {driver.online_status}")
+            logger.info(f"   - Location: ({driver.current_latitude}, {driver.current_longitude})")
+        
         busy_driver_ids = db.query(Order.driver_id).filter(
             Order.taxipark_id == taxipark_id,
             Order.driver_id.isnot(None),
             Order.status.in_(['accepted', 'navigating_to_a', 'arrived_at_a', 'navigating_to_b', 'in_progress'])
         ).subquery()
+        
+        busy_ids_list = [row[0] for row in db.query(Order.driver_id).filter(
+            Order.taxipark_id == taxipark_id,
+            Order.driver_id.isnot(None),
+            Order.status.in_(['accepted', 'navigating_to_a', 'arrived_at_a', 'navigating_to_b', 'in_progress'])
+        ).all()]
+        logger.info(f"🔍 [DispatcherService] Busy driver IDs: {busy_ids_list}")
         
         available_drivers = db.query(Driver).filter(
             Driver.taxipark_id == taxipark_id,
@@ -150,8 +177,10 @@ class DispatcherService:
             ~Driver.id.in_(busy_driver_ids)
         ).all()
         
+        logger.info(f"🔍 [DispatcherService] Available drivers after filtering: {len(available_drivers)}")
+        
         if not available_drivers:
-            print(f"🔍 [DispatcherService] No available drivers found for taxipark {taxipark_id}")
+            logger.info(f"❌ [DispatcherService] No available drivers found for taxipark {taxipark_id}")
             return None
         
         def haversine_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -174,12 +203,12 @@ class DispatcherService:
         nearest_driver = None
         min_distance = float('inf')
         
-        print(f"🔍 [DispatcherService] Searching for drivers near ({latitude}, {longitude})")
-        print(f"🔍 [DispatcherService] Found {len(available_drivers)} available drivers")
+        logger.info(f"🔍 [DispatcherService] Searching for drivers near ({latitude}, {longitude})")
+        logger.info(f"🔍 [DispatcherService] Found {len(available_drivers)} available drivers")
         
         for driver in available_drivers:
             if driver.current_latitude is None or driver.current_longitude is None:
-                print(f"⚠️ [DispatcherService] Driver {driver.first_name} {driver.last_name} has no location")
+                logger.info(f"⚠️ [DispatcherService] Driver {driver.first_name} {driver.last_name} has no location")
                 continue
             
             distance = haversine_distance(
@@ -189,15 +218,15 @@ class DispatcherService:
                 driver.current_longitude
             )
             
-            print(f"🔍 [DispatcherService] Driver {driver.first_name} {driver.last_name}: {distance:.2f} km away")
+            logger.info(f"🔍 [DispatcherService] Driver {driver.first_name} {driver.last_name}: {distance:.2f} km away")
             
             if distance <= radius_km and distance < min_distance:
                 min_distance = distance
                 nearest_driver = driver
         
         if nearest_driver:
-            print(f"✅ [DispatcherService] Found nearest driver: {nearest_driver.first_name} {nearest_driver.last_name} (distance: {min_distance:.2f} km)")
+            logger.info(f"✅ [DispatcherService] Found nearest driver: {nearest_driver.first_name} {nearest_driver.last_name} (distance: {min_distance:.2f} km)")
         else:
-            print(f"❌ [DispatcherService] No drivers found within {radius_km} km radius")
+            logger.info(f"❌ [DispatcherService] No drivers found within {radius_km} km radius")
         
         return nearest_driver

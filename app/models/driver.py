@@ -33,6 +33,10 @@ class Driver(Base):
     online_status = Column(String, default='offline', nullable=False)
     last_online_at = Column(DateTime(timezone=True), nullable=True)
     
+    # Текущие координаты водителя
+    current_latitude = Column(Float, nullable=True)
+    current_longitude = Column(Float, nullable=True)
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     
@@ -65,6 +69,8 @@ class Driver(Base):
             "fcm_token": self.fcm_token,
             "online_status": self.online_status,
             "last_online_at": self.last_online_at.isoformat() if self.last_online_at else None,
+            "current_latitude": self.current_latitude,
+            "current_longitude": self.current_longitude,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None
         }

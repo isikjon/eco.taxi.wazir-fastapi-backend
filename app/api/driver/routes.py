@@ -44,6 +44,8 @@ async def update_online_status(request: Request, db: Session = Depends(get_db)):
         data = await request.json()
         driver_id = data.get('driver_id')
         status = data.get('status')
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
         
         if not driver_id or not status:
             raise HTTPException(status_code=400, detail="driver_id and status are required")
@@ -53,6 +55,9 @@ async def update_online_status(request: Request, db: Session = Depends(get_db)):
         
         from app.models.driver import Driver
         from datetime import datetime
+        import logging
+        
+        logger = logging.getLogger(__name__)
         
         driver = db.query(Driver).filter(Driver.id == driver_id).first()
         if not driver:
@@ -61,6 +66,12 @@ async def update_online_status(request: Request, db: Session = Depends(get_db)):
         driver.online_status = status
         if status == 'online':
             driver.last_online_at = datetime.now()
+            
+            # Обновляем координаты, если они переданы
+            if latitude is not None and longitude is not None:
+                driver.current_latitude = float(latitude)
+                driver.current_longitude = float(longitude)
+                logger.info(f"📍 [OnlineStatus] Driver {driver.first_name} {driver.last_name} location updated: ({latitude}, {longitude})")
         
         db.commit()
         
