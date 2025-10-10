@@ -4,8 +4,11 @@ from app.database.session import get_db
 from app.models.driver import Driver
 from app.models.taxipark import TaxiPark
 from app.models.order import Order
+from app.models.photo_verification import PhotoVerification
+from app.models.transaction import DriverTransaction
 from typing import Optional
 from datetime import datetime, timedelta
+import os
 
 router = APIRouter()
 
@@ -244,3 +247,108 @@ async def get_weekly_results(
     except Exception as e:
         print(f"📊 Error getting weekly results: {e}")
         raise HTTPException(status_code=500, detail=f"Ошибка получения результатов недели: {str(e)}")
+
+@router.delete("/api/drivers/delete-account")
+async def delete_driver_account(
+    phoneNumber: str = Query(..., description="Номер телефона водителя"),
+    db: Session = Depends(get_db)
+):
+    """Полное удаление аккаунта водителя со всеми связанными данными"""
+    try:
+        print(f"🗑️ [DELETE] ===== НАЧАЛО УДАЛЕНИЯ АККАУНТА =====")
+        print(f"🕐 [DELETE] Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"📞 [DELETE] Номер телефона: {phoneNumber}")
+        
+        normalized_phone = normalize_phone_number(phoneNumber)
+        print(f"📱 [DELETE] Нормализованный номер: {normalized_phone}")
+        
+        if not normalized_phone:
+            raise HTTPException(status_code=400, detail="Некорректный номер телефона")
+        
+        driver = db.query(Driver).filter(Driver.phone_number == normalized_phone).first()
+        
+        if not driver:
+            print(f"❌ [DELETE] Водитель не найден")
+            raise HTTPException(status_code=404, detail="Водитель не найден")
+        
+        driver_id = driver.id
+        driver_name = f"{driver.first_name} {driver.last_name}"
+        taxipark_id = driver.taxipark_id
+        
+        print(f"✅ [DELETE] Найден водитель: ID={driver_id}, ФИО={driver_name}")
+        print(f"🏢 [DELETE] Таксопарк ID: {taxipark_id}")
+        
+        photo_verifications = db.query(PhotoVerification).filter(PhotoVerification.driver_id == driver_id).all()
+        print(f"📸 [DELETE] Найдено {len(photo_verifications)} записей фотоконтроля")
+        
+        for photo_verification in photo_verifications:
+            if photo_verification.photos:
+                photos = photo_verification.photos if isinstance(photo_verification.photos, list) else []
+                for photo_path in photos:
+                    try:
+                        full_path = os.path.join("uploads", photo_path) if not photo_path.startswith("uploads") else photo_path
+                        if os.path.exists(full_path):
+                            os.remove(full_path)
+                            print(f"🗑️ [DELETE] Удален файл: {full_path}")
+                    except Exception as e:
+                        print(f"⚠️ [DELETE] Ошибка удаления файла {photo_path}: {e}")
+            
+            db.delete(photo_verification)
+        
+        print(f"✅ [DELETE] Удалены все записи фотоконтроля")
+        
+        transactions = db.query(DriverTransaction).filter(DriverTransaction.driver_id == driver_id).all()
+        print(f"💰 [DELETE] Найдено {len(transactions)} транзакций")
+        
+        for transaction in transactions:
+            db.delete(transaction)
+        
+        print(f"✅ [DELETE] Удалены все транзакции")
+        
+        orders = db.query(Order).filter(Order.driver_id == driver_id).all()
+        print(f"🚕 [DELETE] Найдено {len(orders)} заказов")
+        
+        for order in orders:
+            order.driver_id = None
+            print(f"🔗 [DELETE] Отвязан заказ #{order.order_number}")
+        
+        print(f"✅ [DELETE] Отвязаны все заказы")
+        
+        db.delete(driver)
+        db.commit()
+        
+        print(f"✅ [DELETE] Водитель удален из БД")
+        
+        try:
+            from app.services.taxipark_service import TaxiParkService
+            TaxiParkService.update_drivers_count(db, taxipark_id)
+            print(f"📊 [DELETE] Обновлен счетчик водителей в таксопарке")
+        except Exception as e:
+            print(f"⚠️ [DELETE] Ошибка обновления счетчика таксопарка: {e}")
+        
+        print(f"🎉 [DELETE] ===== УДАЛЕНИЕ ЗАВЕРШЕНО УСПЕШНО =====")
+        print(f"🆔 [DELETE] ID удаленного водителя: {driver_id}")
+        print(f"👤 [DELETE] Имя: {driver_name}")
+        print(f"📱 [DELETE] Номер: {normalized_phone}")
+        print(f"⏰ [DELETE] Время: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"=" * 80)
+        
+        return {
+            "success": True,
+            "message": "Аккаунт полностью удален",
+            "deleted_driver_id": driver_id,
+            "deleted_data": {
+                "photo_verifications": len(photo_verifications),
+                "transactions": len(transactions),
+                "orders_unlinked": len(orders)
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        print(f"❌ [DELETE] Критическая ошибка удаления: {str(e)}")
+        print(f"❌ [DELETE] ===== УДАЛЕНИЕ НЕУСПЕШНО =====")
+        print(f"=" * 80)
+        raise HTTPException(status_code=500, detail=f"Ошибка удаления аккаунта: {str(e)}")
