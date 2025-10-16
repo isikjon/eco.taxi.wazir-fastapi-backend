@@ -68,85 +68,51 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
 
 
-for route in auth_router.routes:
-    if hasattr(route, 'path'):
-        print(f"    🔗 {route.methods} {route.path} -> {route.name}")
+print("📋 Подключение роутов...")
 
 app.include_router(auth_router)
-
-for route in superadmin_router.routes:
-    if hasattr(route, 'path'):
-        print(f"    🔗 {route.methods} {route.path} -> {route.name}")
-
 app.include_router(superadmin_router)
-
-
-for route in dispatcher_router.routes:
-    if hasattr(route, 'path'):
-        print(f"    🔗 {route.methods} {route.path} -> {route.name}")
-
 app.include_router(dispatcher_router)
-
-# Подключаем Driver API routes
-for route in driver_router.routes:
-    if hasattr(route, 'path'):
-        print(f"    🔗 {route.methods} {route.path} -> {route.name}")
-
 app.include_router(driver_router)
-
-# Подключаем WebSocket routes
-for route in websocket_router.routes:
-    if hasattr(route, 'path'):
-        print(f"    🔗 WebSocket {route.path} -> {route.name}")
-
 app.include_router(websocket_router)
 
-# WebSocket endpoints уже подключены через websocket_router
-
-# Подключаем API endpoints для мобильного приложения
-print("    🔗 {'GET'} /api/parks -> get_parks")
 app.add_api_route("/api/parks", get_parks, methods=["GET"], tags=["mobile-api"])
-
-print("    🔗 {'POST'} /api/sms/send -> send_sms_code")
 app.add_api_route("/api/sms/send", send_sms_code, methods=["POST"], tags=["mobile-api"])
-
-print("    🔗 {'POST'} /api/drivers/login -> login_driver")
 app.add_api_route("/api/drivers/login", login_driver, methods=["POST"], tags=["mobile-api"])
-
-print("    🔗 {'POST'} /api/drivers/register -> register_driver")
 app.add_api_route("/api/drivers/register", register_driver, methods=["POST"], tags=["mobile-api"])
-
-print("    🔗 {'GET'} /api/drivers/status -> check_driver_status")
 app.add_api_route("/api/drivers/status", check_driver_status, methods=["GET"], tags=["mobile-api"])
 
-# Подключаем API endpoints для баланса и транзакций
 app.include_router(balance_router, tags=["balance-api"])
-
-# Подключаем API endpoints для профиля водителя
 app.include_router(driver_profile_router, tags=["driver-profile-api"])
-
-# Подключаем API endpoints для фотоконтроля
-for route in photo_control_router.routes:
-    if hasattr(route, 'path'):
-        print(f"    🔗 {route.methods} {route.path} -> {route.name}")
-
 app.include_router(photo_control_router, tags=["photo-control-api"])
-
-# Подключаем клиентский роутер
-for route in client_router.routes:
-    if hasattr(route, 'path'):
-        print(f"    🔗 {route.methods} {route.path} -> {route.name}")
-
 app.include_router(client_router, tags=["client-api"])
 
-# Подключаем API endpoints из api.py
 app.get("/api/parks")(get_parks)
 app.post("/api/sms/send")(send_sms_code)
 app.post("/api/drivers/login")(login_driver)
 app.post("/api/drivers/register")(register_driver)
 app.get("/api/drivers/status")(check_driver_status)
 
-print("✅ All routers included successfully")
+print("✅ Роутеры подключены")
+
+print("🔍 Проверка Devino 2FA API...")
+try:
+    import requests
+    devino_api_url = "https://phoneverification.devinotele.com"
+    
+    test_response = requests.get(
+        devino_api_url,
+        timeout=5
+    )
+    
+    if test_response.status_code in [200, 404, 405]:
+        print("✅ Devino 2FA API доступен")
+    else:
+        print(f"⚠️ Devino 2FA API вернул HTTP {test_response.status_code}")
+except requests.exceptions.Timeout:
+    print("❌ Devino 2FA API не отвечает (timeout)")
+except Exception as e:
+    print(f"❌ Ошибка подключения к Devino 2FA API: {e}")
 
 @app.get("/")
 async def root():

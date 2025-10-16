@@ -7,7 +7,7 @@ aiofiles
 python-dotenv
 sqlalchemy
 alembic
-asyncpg
+psycopg2-binary
 pydantic
 pydantic-settings
 httpx
