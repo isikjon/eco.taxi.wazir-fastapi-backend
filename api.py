@@ -166,18 +166,23 @@ def normalize_phone_number(phone_number):
     # Извлекаем только цифры из номера
     digits_only = ''.join(filter(str.isdigit, phone_number))
     
-    # Определяем основные цифры номера
-    if len(digits_only) >= 10:
-        if digits_only.startswith('996'):
-            # Номер с кодом страны 996 - берем все цифры после 996
-            main_digits = digits_only[3:]  # Берем все цифры после 996
+    # Проверяем что номер с кодом 996
+    if digits_only.startswith('996'):
+        # Берем код страны (996) + 9 цифр номера
+        if len(digits_only) >= 12:
+            # Если цифр 12 или больше, берем первые 12 (996 + 9 цифр)
+            main_digits = digits_only[3:12]  # Берем только 9 цифр после 996
         else:
-            # Берем последние 10 цифр, если их достаточно
-            main_digits = digits_only[-10:] if len(digits_only) >= 10 else digits_only[-9:]
+            # Если меньше 12 цифр - неверный формат
+            return None
+    elif len(digits_only) == 9:
+        # Если передали только 9 цифр без кода страны
+        main_digits = digits_only
     else:
-        return None  # Не можем нормализовать
+        # Неверный формат
+        return None
     
-    # Возвращаем в едином формате БД: +996XXXXXXXXXX
+    # Возвращаем в едином формате: +996XXXXXXXXX (13 символов: + и 12 цифр)
     return f"+996{main_digits}"
 
 # API endpoints
@@ -218,10 +223,21 @@ async def send_sms_code(request: SmsRequest):
         import requests
         from datetime import datetime
         
+        print(f"📱 [SMS API] Получен запрос с номером: {request.phoneNumber}")
+        print(f"📱 [SMS API] Длина входящего номера: {len(request.phoneNumber)}")
+        
         # Нормализуем номер телефона
         normalized_phone = normalize_phone_number(request.phoneNumber)
+        print(f"📱 [SMS API] Нормализованный номер: {normalized_phone}")
+        
         if not normalized_phone:
+            print(f"❌ [SMS API] Ошибка нормализации номера")
             raise HTTPException(status_code=400, detail="Неверный формат номера телефона")
+        
+        # Проверяем длину нормализованного номера
+        if len(normalized_phone) != 13:
+            print(f"❌ [SMS API] Неверная длина номера: {len(normalized_phone)} (ожидается 13: +996XXXXXXXXX)")
+            raise HTTPException(status_code=400, detail=f"Неверная длина номера: {len(normalized_phone)}, ожидается 13 символов (+996XXXXXXXXX)")
         
         # Проверяем тестовый номер (поддерживаем разные форматы)
         if normalized_phone in ["+996111111111", "+9961111111111"]:
@@ -235,6 +251,7 @@ async def send_sms_code(request: SmsRequest):
         
         # Нормализуем номер для Devino 2FA API (убираем +)
         phone_for_2fa = normalized_phone.replace('+', '')
+        print(f"📱 [SMS API] Номер для Devino: {phone_for_2fa}")
         
         # Devino 2FA API настройки
         devino_2fa_url = "https://phoneverification.devinotele.com/GenerateCode"
@@ -251,12 +268,21 @@ async def send_sms_code(request: SmsRequest):
             "DestinationNumber": phone_for_2fa
         }
         
+        print(f"📱 [SMS API] Отправка запроса в Devino:")
+        print(f"   URL: {devino_2fa_url}")
+        print(f"   Headers: {headers}")
+        print(f"   Payload: {payload}")
+        
         response = requests.post(
             devino_2fa_url,
             headers=headers,
             json=payload,
-            timeout=10  # Уменьшили таймаут с 30 до 10 секунд
+            timeout=10
         )
+        
+        print(f"📱 [SMS API] Ответ от Devino:")
+        print(f"   Status: {response.status_code}")
+        print(f"   Body: {response.text}")
         
         if response.status_code == 200:
             response_data = response.json()
@@ -272,11 +298,15 @@ async def send_sms_code(request: SmsRequest):
                 }
             else:
                 # Ошибка от Devino API
+                error_code = response_data.get('Code', 'unknown')
                 error_desc = response_data.get('Description', 'Неизвестная ошибка')
-                raise HTTPException(status_code=400, detail=f"Devino API error: {error_desc}")
+                print(f"❌ [SMS API] Ошибка Devino API - Code: {error_code}, Description: {error_desc}")
+                raise HTTPException(status_code=400, detail=f"Devino API error (Code {error_code}): {error_desc}")
         else:
             # HTTP ошибка
-            raise HTTPException(status_code=500, detail=f"HTTP error: {response.status_code}")
+            print(f"❌ [SMS API] HTTP ошибка: {response.status_code}")
+            print(f"   Response body: {response.text}")
+            raise HTTPException(status_code=400, detail=f"Devino API HTTP error: {response.status_code} - {response.text}")
             
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Connection error: {str(e)}")
