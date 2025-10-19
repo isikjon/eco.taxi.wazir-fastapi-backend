@@ -223,6 +223,7 @@ async def send_sms_code(request: SmsRequest):
         import requests
         from datetime import datetime
         
+        print(f"🔧 [DEBUG] ========== SMS API ВЫЗВАНА ==========")
         print(f"📱 [SMS API] Получен запрос с номером: {request.phoneNumber}")
         print(f"📱 [SMS API] Длина входящего номера: {len(request.phoneNumber)}")
         
@@ -239,74 +240,77 @@ async def send_sms_code(request: SmsRequest):
             print(f"❌ [SMS API] Неверная длина номера: {len(normalized_phone)} (ожидается 13: +996XXXXXXXXX)")
             raise HTTPException(status_code=400, detail=f"Неверная длина номера: {len(normalized_phone)}, ожидается 13 символов (+996XXXXXXXXX)")
         
-        # Проверяем тестовый номер (поддерживаем разные форматы)
-        if normalized_phone in ["+996111111111", "+9961111111111"]:
-            return {
-                "success": True,
-                "message": "SMS код отправлен (тестовый режим)",
-                "messageId": f"test_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                "provider": "test_mode",
-                "test_code": "1111"
-            }
+        # ОТЛАДОЧНЫЙ РЕЖИМ - всегда возвращаем код 1111
+        print(f"🔧 [DEBUG MODE] Отключен Devino API, возвращаем тестовый код 1111")
+        return {
+            "success": True,
+            "message": "SMS код отправлен (отладочный режим)",
+            "messageId": f"debug_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            "provider": "debug_mode",
+            "test_code": "1111"
+        }
         
-        # Нормализуем номер для Devino 2FA API (убираем +)
-        phone_for_2fa = normalized_phone.replace('+', '')
-        print(f"📱 [SMS API] Номер для Devino: {phone_for_2fa}")
+        # ОТКЛЮЧЕНО: Devino API временно отключен
+        # Нормализуем номер для Devino 2FA API
+        # Пробуем оригинальный формат кыргызского номера
+        # phone_for_2fa = normalized_phone.replace('+', '')
+        
+        # print(f"📱 [SMS API] Номер для Devino: {phone_for_2fa}")
         
         # Devino 2FA API настройки
-        devino_2fa_url = "https://phoneverification.devinotele.com/GenerateCode"
-        devino_api_key = "8YF4D4R8k094r8uR3nwiEnsRuwIXRW67"
+        # devino_2fa_url = "https://phoneverification.devinotele.com/GenerateCode"
+        # devino_api_key = "8YF4D4R8k094r8uR3nwiEnsRuwIXRW67"
         
         # Отправляем запрос на генерацию кода через Devino 2FA API
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "X-ApiKey": devino_api_key
-        }
+        # headers = {
+        #     "Content-Type": "application/json",
+        #     "Accept": "application/json",
+        #     "X-ApiKey": devino_api_key
+        # }
         
-        payload = {
-            "DestinationNumber": phone_for_2fa
-        }
+        # payload = {
+        #     "DestinationNumber": phone_for_2fa
+        # }
         
-        print(f"📱 [SMS API] Отправка запроса в Devino:")
-        print(f"   URL: {devino_2fa_url}")
-        print(f"   Headers: {headers}")
-        print(f"   Payload: {payload}")
+        # print(f"📱 [SMS API] Отправка запроса в Devino:")
+        # print(f"   URL: {devino_2fa_url}")
+        # print(f"   Headers: {headers}")
+        # print(f"   Payload: {payload}")
         
-        response = requests.post(
-            devino_2fa_url,
-            headers=headers,
-            json=payload,
-            timeout=10
-        )
+        # response = requests.post(
+        #     devino_2fa_url,
+        #     headers=headers,
+        #     json=payload,
+        #     timeout=10
+        # )
         
-        print(f"📱 [SMS API] Ответ от Devino:")
-        print(f"   Status: {response.status_code}")
-        print(f"   Body: {response.text}")
+        # print(f"📱 [SMS API] Ответ от Devino:")
+        # print(f"   Status: {response.status_code}")
+        # print(f"   Body: {response.text}")
         
-        if response.status_code == 200:
-            response_data = response.json()
+        # if response.status_code == 200:
+        #     response_data = response.json()
             
-            if response_data.get('Code') == 0:
-                # SMS код успешно отправлен через Devino 2FA
-                return {
-                    "success": True,
-                    "message": "SMS код отправлен",
-                    "messageId": f"devino_2fa_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-                    "provider": "devino_2fa",
-                    "description": response_data.get('Description')
-                }
-            else:
-                # Ошибка от Devino API
-                error_code = response_data.get('Code', 'unknown')
-                error_desc = response_data.get('Description', 'Неизвестная ошибка')
-                print(f"❌ [SMS API] Ошибка Devino API - Code: {error_code}, Description: {error_desc}")
-                raise HTTPException(status_code=400, detail=f"Devino API error (Code {error_code}): {error_desc}")
-        else:
-            # HTTP ошибка
-            print(f"❌ [SMS API] HTTP ошибка: {response.status_code}")
-            print(f"   Response body: {response.text}")
-            raise HTTPException(status_code=400, detail=f"Devino API HTTP error: {response.status_code} - {response.text}")
+        #     if response_data.get('Code') == 0:
+        #         # SMS код успешно отправлен через Devino 2FA
+        #         return {
+        #             "success": True,
+        #             "message": "SMS код отправлен",
+        #             "messageId": f"devino_2fa_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+        #             "provider": "devino_2fa",
+        #             "description": response_data.get('Description')
+        #         }
+        #     else:
+        #         # Ошибка от Devino API
+        #         error_code = response_data.get('Code', 'unknown')
+        #         error_desc = response_data.get('Description', 'Неизвестная ошибка')
+        #         print(f"❌ [SMS API] Ошибка Devino API - Code: {error_code}, Description: {error_desc}")
+        #         raise HTTPException(status_code=400, detail=f"Devino API error (Code {error_code}): {error_desc}")
+        # else:
+        #     # HTTP ошибка
+        #     print(f"❌ [SMS API] HTTP ошибка: {response.status_code}")
+        #     print(f"   Response body: {response.text}")
+        #     raise HTTPException(status_code=400, detail=f"Devino API HTTP error: {response.status_code} - {response.text}")
             
     except requests.exceptions.RequestException as e:
         raise HTTPException(status_code=500, detail=f"Connection error: {str(e)}")
@@ -320,72 +324,77 @@ async def check_sms_code_with_devino(phone_number: str, code: str):
     try:
         import requests
         
+        print(f"🔧 [DEBUG] ========== CHECK SMS ВЫЗВАНА ==========")
+        print(f"🔧 [DEBUG] Phone: {phone_number}, Code: {code}")
+        
         # Нормализуем номер телефона
         normalized_phone = normalize_phone_number(phone_number)
         if not normalized_phone:
             return {"valid": False, "error": "Неверный формат номера телефона"}
         
-        # Проверяем тестовый номер (поддерживаем разные форматы)
-        if normalized_phone in ["+996111111111", "+9961111111111"]:
-            if code == "1111":
-                return {
-                    "valid": True,
-                    "message": "Тестовый код принят"
-                }
-            else:
-                return {
-                    "valid": False,
-                    "error": "Неверный тестовый код"
-                }
-        
-        # Нормализуем номер для Devino 2FA API (убираем +)
-        phone_for_2fa = normalized_phone.replace('+', '')
-        
-        # Devino 2FA API настройки
-        devino_check_url = "https://phoneverification.devinotele.com/CheckCode"
-        devino_api_key = "8YF4D4R8k094r8uR3nwiEnsRuwIXRW67"
-        
-        # Отправляем запрос на проверку кода через Devino 2FA API
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-            "X-ApiKey": devino_api_key
-        }
-        
-        payload = {
-            "DestinationNumber": phone_for_2fa,
-            "Code": code
-        }
-        
-        response = requests.post(
-            devino_check_url,
-            headers=headers,
-            json=payload,
-            timeout=10  # Уменьшили таймаут с 30 до 10 секунд
-        )
-        
-        if response.status_code == 200:
-            response_data = response.json()
-            
-            if response_data.get('Code') == 0:
-                # Код валидный
-                return {
-                    "valid": True,
-                    "message": response_data.get('Description')
-                }
-            else:
-                # Код невалидный
-                error_desc = response_data.get('Description', 'Неизвестная ошибка')
-                return {
-                    "valid": False,
-                    "error": error_desc
-                }
+        # ОТЛАДОЧНЫЙ РЕЖИМ - всегда принимаем код 1111
+        print(f"🔧 [DEBUG MODE] Отключена проверка Devino API, принимаем код 1111")
+        if code == "1111":
+            return {
+                "valid": True,
+                "message": "Код принят (отладочный режим)"
+            }
         else:
-            # HTTP ошибка
             return {
                 "valid": False,
-                "error": f"HTTP error: {response.status_code}"
+                "error": "В отладочном режиме принимается только код 1111"
             }
+        
+        # ОТКЛЮЧЕНО: Devino API временно отключен
+        # Нормализуем номер для Devino 2FA API
+        # Пробуем оригинальный формат кыргызского номера
+        # phone_for_2fa = normalized_phone.replace('+', '')
+        
+        # Devino 2FA API настройки
+        # devino_check_url = "https://phoneverification.devinotele.com/CheckCode"
+        # devino_api_key = "8YF4D4R8k094r8uR3nwiEnsRuwIXRW67"
+        
+        # Отправляем запрос на проверку кода через Devino 2FA API
+        # headers = {
+        #     "Content-Type": "application/json",
+        #     "Accept": "application/json",
+        #     "X-ApiKey": devino_api_key
+        # }
+        
+        # payload = {
+        #     "DestinationNumber": phone_for_2fa,
+        #     "Code": code
+        # }
+        
+        # response = requests.post(
+        #     devino_check_url,
+        #     headers=headers,
+        #     json=payload,
+        #     timeout=10  # Уменьшили таймаут с 30 до 10 секунд
+        # )
+        
+        # if response.status_code == 200:
+        #     response_data = response.json()
+            
+        #     if response_data.get('Code') == 0:
+        #         # Код валидный
+        #         return {
+        #             "valid": True,
+        #             "message": response_data.get('Description')
+        #         }
+        #     else:
+        #         # Код невалидный
+        #         error_desc = response_data.get('Description', 'Неизвестная ошибка')
+        #         return {
+        #             "valid": False,
+        #             "error": error_desc
+        #         }
+        # else:
+        #     # HTTP ошибка
+        #     return {
+        #         "valid": False,
+        #         "error": f"HTTP error: {response.status_code}"
+        #     }
             
     except requests.exceptions.RequestException as e:
         return {

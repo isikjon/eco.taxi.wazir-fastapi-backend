@@ -25,29 +25,46 @@ def normalize_phone_number(phone_number):
     if not phone_number:
         return None
     
+    print(f"🔧 [NORMALIZE] Input phone: '{phone_number}'")
+    
     # Извлекаем только цифры из номера
     digits_only = ''.join(filter(str.isdigit, phone_number))
+    print(f"🔧 [NORMALIZE] Digits only: '{digits_only}' (length: {len(digits_only)})")
     
-    # Определяем основные цифры номера
-    if len(digits_only) >= 10:
-        if digits_only.startswith('996'):
-            # Номер с кодом страны 996 - берем все цифры после 996
-            main_digits = digits_only[3:]  # Берем все цифры после 996
-        else:
-            # Берем последние 10 цифр, если их достаточно
-            main_digits = digits_only[-10:] if len(digits_only) >= 10 else digits_only[-9:]
+    # Если номер начинается с 996, убираем его
+    if digits_only.startswith('996'):
+        main_digits = digits_only[3:]  # Берем все цифры после 996
+        print(f"🔧 [NORMALIZE] Started with 996, main_digits: '{main_digits}'")
     else:
-        return None  # Не можем нормализовать
+        # Если номер 9 цифр (без кода страны), используем как есть
+        if len(digits_only) == 9:
+            main_digits = digits_only
+            print(f"🔧 [NORMALIZE] 9 digits, using as is: '{main_digits}'")
+        else:
+            # Берем последние 9 цифр
+            main_digits = digits_only[-9:] if len(digits_only) >= 9 else digits_only
+            print(f"🔧 [NORMALIZE] Taking last 9 digits: '{main_digits}'")
+    
+    # Проверяем, что у нас есть 9 цифр
+    if len(main_digits) != 9:
+        print(f"❌ [NORMALIZE] Invalid length: {len(main_digits)}, expected 9")
+        return None
     
     # Возвращаем в едином формате БД: +996XXXXXXXXXX
-    return f"+996{main_digits}"
+    result = f"+996{main_digits}"
+    print(f"✅ [NORMALIZE] Result: '{result}'")
+    return result
 
 @client_router.post("/register")
 async def register_client(client_data: ClientCreate, db: Session = Depends(get_db)):
     """Регистрация нового клиента"""
     try:
+        print(f"🔧 [REGISTER] ========== CLIENT REGISTER ВЫЗВАНА ==========")
+        print(f"🔧 [REGISTER] Input data: {client_data}")
+        
         # Нормализуем номер телефона
         normalized_phone = normalize_phone_number(client_data.phone_number)
+        print(f"🔧 [REGISTER] Normalized phone: '{normalized_phone}'")
         
         # Проверяем, существует ли клиент с таким номером
         existing_client = db.query(Client).filter(Client.phone_number == normalized_phone).first()
@@ -93,44 +110,57 @@ async def login_client(login_data: ClientLogin, db: Session = Depends(get_db)):
         # Нормализуем номер телефона
         normalized_phone = normalize_phone_number(login_data.phone_number)
         
-        # Проверяем тестовый номер (поддерживаем разные форматы)
-        if normalized_phone in ["+996111111111", "+9961111111111"]:
-            if login_data.sms_code != "1111":
-                return {
-                    "success": False,
-                    "error": "Неверный тестовый код"
-                }
-        else:
-            # Проверяем SMS код в SQLite БД
-            conn = get_db_connection()
-            if not conn:
-                return {
-                    "success": False,
-                    "error": "База данных SMS недоступна"
-                }
-            
-            cursor = conn.cursor()
-            cursor.execute('''
-                SELECT * FROM sms_codes 
-                WHERE phone_number = ? AND code = ? AND used = FALSE 
-                AND datetime('now') < expires_at
-                ORDER BY created_at DESC LIMIT 1
-            ''', (normalized_phone, login_data.sms_code))
-            
-            sms_record = cursor.fetchone()
-            if not sms_record:
-                conn.close()
-                return {
-                    "success": False,
-                    "error": "Неверный или истекший SMS код"
-                }
-            
-            # Отмечаем код как использованный
-            cursor.execute('''
-                UPDATE sms_codes SET used = TRUE WHERE id = ?
-            ''', (sms_record['id'],))
-            conn.commit()
-            conn.close()
+        # ОТЛАДОЧНЫЙ РЕЖИМ - всегда принимаем код 1111
+        print(f"🔧 [DEBUG] ========== CLIENT LOGIN ВЫЗВАНА ==========")
+        print(f"🔧 [DEBUG] Phone: {normalized_phone}, Code: {login_data.sms_code}")
+        print(f"🔧 [DEBUG MODE] Отключена проверка SMS в БД, принимаем код 1111")
+        
+        if login_data.sms_code != "1111":
+            return {
+                "success": False,
+                "error": "В отладочном режиме принимается только код 1111"
+            }
+        
+        # ОТКЛЮЧЕНО: Проверка SMS кода в SQLite БД
+        # if normalized_phone in ["+996111111111", "+9961111111111"]:
+        #     if login_data.sms_code != "1111":
+        #         return {
+        #             "success": False,
+        #             "error": "Неверный тестовый код"
+        #         }
+        # else:
+        #     # Проверяем SMS код в SQLite БД
+        #     conn = get_db_connection()
+        #     if not conn:
+        #         return {
+        #             "success": False,
+        #             "error": "База данных SMS недоступна"
+        #         }
+        #     
+        #     cursor = conn.cursor()
+        #     cursor.execute('''
+        #         SELECT * FROM sms_codes 
+        #         WHERE phone_number = ? AND code = ? AND used = FALSE 
+        #         AND datetime('now') < expires_at
+        #         ORDER BY created_at DESC LIMIT 1
+        #     ''', (normalized_phone, login_data.sms_code))
+        #     
+        #     sms_record = cursor.fetchone()
+        #     if not sms_record:
+        #         conn.close()
+        #         return {
+        #             "success": False,
+        #             "error": "Неверный или истекший SMS код"
+        #         }
+        #     
+        #     # Отмечаем код как использованный
+        #     cursor.execute('''
+        #         UPDATE sms_codes SET used = TRUE WHERE id = ?
+        #     ''', (sms_record['id'],))
+        #     conn.commit()
+        #     conn.close()
+        
+        print(f"✅ [DEBUG MODE] SMS код 1111 принят")
         
         # Ищем клиента по номеру телефона
         client = db.query(Client).filter(Client.phone_number == normalized_phone).first()
